@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: turan_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # Mount models directory for easy model replacement without rebuild
+      - ./models:/models:ro
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - turan_net
+
+  # ── Frontend (React + nginx) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=/api
+    container_name: turan_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - turan_net
+
+networks:
+  turan_net:
+    driver: bridge
+
+volumes:
+  models:
