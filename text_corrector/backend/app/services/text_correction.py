@@ -25,13 +25,14 @@ of calling these functions, so nothing here needs to change.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from rapidfuzz import process as rfprocess
 from rapidfuzz import fuzz
 
 from app.core.config import settings
 from app.core.logging_config import logger
+from app.services.morphology import analyze, is_analyzable
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUSSIAN VOCABULARY
@@ -287,6 +288,12 @@ KAZAKH_VOCABULARY: Set[str] = {
 _RU_VOCAB_LIST: List[str] = sorted(RUSSIAN_VOCABULARY)
 _KZ_VOCAB_LIST: List[str] = sorted(KAZAKH_VOCABULARY)
 
+# ── Kazakh stem lexicon for the morphological analyzer ────────────────────────
+# Every vocabulary entry may act as a stem. The analyzer uses this set to decide
+# whether an out-of-vocabulary word is a legitimate inflected form (stem + valid
+# suffix chain) and therefore must NOT be "corrected" away.
+_KZ_STEMS: Set[str] = {w.lower() for w in KAZAKH_VOCABULARY}
+
 # ── Tokenisation regex ────────────────────────────────────────────────────────
 # Splits text into (cyrillic-word, non-word) runs preserving everything.
 _TOKEN_RE = re.compile(r"([\u0400-\u04FF]+|[^\u0400-\u04FF]+)", re.UNICODE)
@@ -355,13 +362,24 @@ def _correct_tokens(
     vocab: List[str],
     threshold: float,
     max_edit: int,
+    accept_word: Optional[Callable[[str], bool]] = None,
 ) -> Tuple[str, List[Dict]]:
     """
     Correct each word-token against *vocab*.
+
+    Parameters
+    ----------
+    accept_word :
+        Optional predicate. When a token is absent from *vocab* but
+        ``accept_word(token)`` returns True, the token is treated as valid and
+        left unchanged. This is how the Kazakh morphological analyzer protects
+        legitimate inflected forms (stem + suffix chain) from being "corrected".
+
     Returns (corrected_text, list_of_correction_dicts).
     """
     corrections: List[Dict] = []
     result_parts: List[str] = []
+    vocab_set: Set[str] = set(vocab)
 
     for token in tokens:
         # Non-word token (spaces, punctuation) – pass through unchanged
@@ -372,7 +390,12 @@ def _correct_tokens(
         word_lower = token.lower()
 
         # Already in vocabulary – keep original casing
-        if word_lower in set(vocab):
+        if word_lower in vocab_set:
+            result_parts.append(token)
+            continue
+
+        # Morphologically valid inflected form – keep as is
+        if accept_word is not None and accept_word(word_lower):
             result_parts.append(token)
             continue
 
@@ -416,9 +439,27 @@ def correct_russian(text: str) -> Tuple[str, List[Dict]]:
     )
 
 
+def _kazakh_morph_accept(word: str) -> bool:
+    """
+    True if *word* is a valid Kazakh inflected form of a known stem.
+
+    Bridges the morphological analyzer into the correction pipeline so that
+    legitimate stem + suffix combinations (which the finite vocabulary cannot
+    enumerate) are recognised and left untouched.
+    """
+    return is_analyzable(word, _KZ_STEMS)
+
+
 def correct_kazakh(text: str) -> Tuple[str, List[Dict]]:
     """
-    Apply Kazakh dictionary + edit-distance correction to *text*.
+    Apply Kazakh correction to *text*.
+
+    The pipeline now combines two components into a single mechanism:
+      1. morphological analysis — recognises valid inflected forms and protects
+         them from spurious correction;
+      2. dictionary + edit-distance — fixes genuine misspellings of the
+         remaining out-of-vocabulary words.
+
     Returns (corrected_text, corrections_list).
     """
     tokens = _TOKEN_RE.findall(text)
@@ -427,6 +468,7 @@ def correct_kazakh(text: str) -> Tuple[str, List[Dict]]:
         _KZ_VOCAB_LIST,
         settings.CORRECTION_SIMILARITY_THRESHOLD,
         settings.MAX_EDIT_DISTANCE,
+        accept_word=_kazakh_morph_accept,
     )
 
 

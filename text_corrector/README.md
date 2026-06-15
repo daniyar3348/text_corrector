@@ -11,6 +11,7 @@ built as a research and pilot-implementation prototype for educational instituti
 |---|---|
 | Russian spell correction | ✅ |
 | Kazakh spell correction | ✅ |
+| Kazakh morphological analysis (stem + suffix parsing) | ✅ |
 | Automatic language detection | ✅ |
 | Confidence scoring | ✅ |
 | Diff highlighting (original vs corrected) | ✅ |
@@ -248,6 +249,29 @@ The detection algorithm is layered:
 | 4 | Cyrillic character coverage (Russian fallback) | 40% |
 
 Output labels: `Russian` · `Kazakh` · `Mixed` · `Unknown`
+
+---
+
+## Kazakh Morphology — How It Works
+
+Kazakh is agglutinative: a stem takes an ordered chain of suffixes
+(`STEM + NUMBER + POSSESSIVE + CASE`). A finite dictionary cannot list every
+inflected form, so the corrector integrates a **morphological analyzer**
+(`backend/app/services/morphology/`) into the Kazakh pipeline:
+
+1. **Analysis** — an out-of-vocabulary word is segmented back into stem +
+   grammemes using the allomorph inventories in `suffixes.py`, with
+   **vowel-harmony** validation (`phonology.py`) and recovery of stem-final
+   consonant alternations (қ↔ғ, к↔г, п↔б).
+2. **Decision** — if the word parses to a *known stem* with a harmony-consistent
+   suffix chain (e.g. `мектептердің` → `мектеп`-PL-GEN), it is a valid form and
+   is left untouched.
+3. **Correction** — only words that are neither in the vocabulary nor
+   analyzable fall through to dictionary + edit-distance correction.
+
+This is the unified ML / morphology mechanism targeted by project stage 4: the
+morphological analyzer and the correction model cooperate so that genuine
+inflection is preserved while real misspellings are fixed.
 
 ---
 
