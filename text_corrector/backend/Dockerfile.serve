@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1
+# ──────────────────────────────────────────────────────────────────────────────
+# SERVING image: FastAPI + CPU PyTorch + KazRoBERTa token-classification detector
+# + rule/lexicon Kazakh corrector. The model (~316MB) and lexicon are COPIED into
+# the image so it is self-contained and reproducible (no host-path/volume coupling).
+# Rebuild when the model changes.  BUILD CONTEXT MUST BE ./backend.
+#   docker build -f backend/Dockerfile.serve -t turan-serve ./backend
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM python:3.13-slim AS builder
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-serve.txt .
+
+# `torch==2.12.1+cpu` resolves ONLY from the PyTorch CPU index (the +cpu local
+# version is absent from PyPI), so no CUDA wheel can be pulled. PyPI remains the
+# primary index for everything else. Installed into an isolated prefix that is
+# copied wholesale into the runtime stage.
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        -r requirements-serve.txt
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM python:3.13-slim
+WORKDIR /app
+
+# libgomp1: the CPU torch wheel dynamically links OpenMP (libgomp.so.1) and loads
+# it at `import torch`. python:3.13-slim does NOT ship it -> without this the
+# import raises and the app SILENTLY falls back to PlaceholderModel while /health
+# would still look green. This line is load-bearing.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HOME=/tmp/hf \
+    KAZAKH_MODEL_PATH=/app/models/kazakh_detector
+
+# Installed packages (incl. CPU torch) from the builder.
+COPY --from=builder /install /usr/local
+
+# Layer order = least→most churn so the heavy model layer is cached across edits:
+# 1) lexicon (needed by KazakhCorrector at construction; else load fails)
+COPY data/kk_lexicon.tsv ./data/kk_lexicon.tsv
+# 2) app code (changes most often)
+COPY app/ ./app/
+# 3) trained model artifact (largest, changes least)
+COPY models/kazakh_detector/ ./models/kazakh_detector/
+
+# Non-root; re-own copied files so appuser can read them.
+RUN useradd --no-create-home --shell /bin/false appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+# Healthcheck ASSERTS the real detector loaded (fails if it silently degraded to
+# PlaceholderModel). start-period covers torch import + 316MB model + lexicon load.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python -c "import urllib.request,json,sys; d=json.load(urllib.request.urlopen('http://localhost:8000/health',timeout=5)); x=d['details']; sys.exit(0 if x.get('kazakh_model_ready')=='True' and 'TransformerModel' in x.get('kazakh_model','') else 1)"
+
+# Single worker by default (each worker loads its OWN ~316MB model -> RAM scales
+# with worker count). For throughput add `--workers N` (size N vs cores & RAM).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

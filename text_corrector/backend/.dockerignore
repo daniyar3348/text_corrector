@@ -1,0 +1,31 @@
+# Build context = ./backend. Keep it lean, but the serving image NEEDS
+# models/kazakh_detector/ and data/kk_lexicon.tsv — those are NOT excluded.
+
+# ── Host-specific virtualenvs (py3.13/3.14) ──────────────────────────────────
+.venv/
+.venv-train/
+
+# ── Python caches ─────────────────────────────────────────────────────────────
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# ── Logs & local secrets ──────────────────────────────────────────────────────
+**/*.log
+.env
+.env.*
+
+# ── Large generated artifacts — exclude these, but KEEP data/kk_lexicon.tsv ──
+#    (explicit subdir/log excludes — no fragile re-include of an excluded dir).
+data/kazakh_spellcheck/
+data/colab/
+data/*.log
+
+# ── Dev/test (not needed in the serving image) ────────────────────────────────
+tests/
+scripts/
+
+# ── OS cruft ──────────────────────────────────────────────────────────────────
+.DS_Store

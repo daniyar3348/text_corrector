@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     MAX_TEXT_LENGTH: int = 5000
     MIN_TEXT_LENGTH: int = 1
 
+    # ── File upload (/correct-file) ───────────────────────────────────────────
+    # Rejected above this size, before the body is read into memory
+    MAX_FILE_SIZE_MB: int = 5
+    # Extracted text is truncated here (documents, not single sentences)
+    MAX_FILE_TEXT_LENGTH: int = 200_000
+    # Backstop only: chunks are cut per sentence, this caps run-on text that
+    # never punctuates (the detector truncates at 512 subtokens)
+    FILE_CHUNK_WORDS: int = 180
+    # Cap on the itemised correction list in the response (text is never capped)
+    MAX_FILE_CORRECTIONS: int = 1000
+
     # ── Correction thresholds ─────────────────────────────────────────────────
     # Minimum similarity (0–1) to accept a correction candidate
     CORRECTION_SIMILARITY_THRESHOLD: float = 0.55

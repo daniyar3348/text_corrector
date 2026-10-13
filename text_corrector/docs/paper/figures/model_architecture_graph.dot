@@ -1,0 +1,49 @@
+digraph KazRoBERTa {
+  rankdir=TB;
+  bgcolor="white";
+  graph [fontname="Helvetica", labelloc="t", fontsize=17,
+         label="KazRoBERTa token-classification detector  —  network architecture\nRoBERTa encoder · 6 layers · 12 heads · hidden 768 · FFN 3072 · GELU · vocab 52000 · 2 labels · ~82.9M params"];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, margin="0.14,0.08", color="#888888"];
+  edge [fontname="Helvetica", fontsize=9, color="#666666"];
+
+  inp [label="input_ids  [B, L]\n(+ attention_mask)", fillcolor="#eceff4"];
+
+  subgraph cluster_emb {
+    label="Embeddings"; labeljust="l"; style="rounded,filled"; fillcolor="#eef5ff";
+    color="#9bbce0"; fontname="Helvetica-Bold"; fontsize=12;
+    we [label="Word embedding\n52000 x 768", fillcolor="#dceafe"];
+    pe [label="Position embedding\n514 x 768", fillcolor="#dceafe"];
+    te [label="Token-type embedding\n1 x 768", fillcolor="#dceafe"];
+    esum [label="sum  ->  LayerNorm  ->  Dropout", fillcolor="#cfe0fb"];
+    we -> esum; pe -> esum; te -> esum;
+  }
+  inp -> we; inp -> pe; inp -> te;
+
+  subgraph cluster_enc {
+    label="Transformer encoder layer   ( x6, weights not shared )"; labeljust="l";
+    style="rounded,filled"; fillcolor="#eefae8"; color="#9ccb8f";
+    fontname="Helvetica-Bold"; fontsize=12;
+    qkv  [label="Linear Q, K, V\n768 -> 768  (x3)", fillcolor="#dcefd0"];
+    attn [label="Scaled dot-product attention\nsoftmax(QK^T / sqrt(64)) * V\n12 heads x 64", fillcolor="#dcefd0"];
+    ao   [label="Attention output: Linear 768 -> 768\nAdd & LayerNorm  (residual)", fillcolor="#dcefd0"];
+    ff1  [label="Feed-forward: Linear 768 -> 3072\nGELU", fillcolor="#fbeecb"];
+    ff2  [label="Linear 3072 -> 768\nAdd & LayerNorm  (residual)", fillcolor="#fbeecb"];
+    qkv -> attn -> ao -> ff1 -> ff2;
+  }
+  esum -> qkv [label="[B, L, 768]"];
+
+  subgraph cluster_head {
+    label="Token-classification head"; labeljust="l"; style="rounded,filled";
+    fillcolor="#f7f0ff"; color="#c3a6e0"; fontname="Helvetica-Bold"; fontsize=12;
+    drop [label="Dropout", fillcolor="#ecdffb"];
+    cls  [label="Classifier: Linear 768 -> 2", fillcolor="#ecdffb"];
+    drop -> cls;
+  }
+  ff2 -> drop [label="[B, L, 768]   (after x6 layers)"];
+
+  out [label="per-token logits  [B, L, 2]\nargmax  ->  { KEEP, ERROR }", fillcolor="#eceff4"];
+  cls -> out [label="softmax"];
+
+  corr [label="symbolic corrector\n(fixes flagged words)", shape=note, fillcolor="#f3f3ee"];
+  out -> corr [style=dashed, color="#999999", label="flagged positions"];
+}

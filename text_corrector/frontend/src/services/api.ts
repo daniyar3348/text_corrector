@@ -7,6 +7,7 @@
 import axios, { AxiosError } from 'axios'
 import type {
   CorrectionResponse,
+  FileCorrectionResponse,
   LanguageDetectionResponse,
   HealthResponse,
 } from '@/types'
@@ -54,6 +55,43 @@ export async function correctText(text: string): Promise<CorrectionResponse> {
     const { data } = await client.post<CorrectionResponse>('/correct-text', {
       text,
     })
+    return data
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+/** Accepted by POST /correct-file — mirrors `file_extraction.supported_extensions()`. */
+export const SUPPORTED_FILE_EXTENSIONS = [
+  '.txt', '.md', '.csv', '.tsv', '.log', '.docx', '.pdf',
+] as const
+
+export const MAX_FILE_SIZE_MB = 5
+
+/**
+ * Upload a document and correct all of its text.
+ *
+ * Uses a much longer timeout than the other calls: the backend runs one model
+ * pass per sentence, so a long document legitimately takes tens of seconds.
+ */
+export async function correctFile(
+  file: File,
+  signal?: AbortSignal,
+): Promise<FileCorrectionResponse> {
+  const form = new FormData()
+  form.append('file', file)
+
+  try {
+    const { data } = await client.post<FileCorrectionResponse>(
+      '/correct-file',
+      form,
+      {
+        // Let the browser set the multipart boundary itself
+        headers: { 'Content-Type': undefined },
+        timeout: 180_000,
+        signal,
+      },
+    )
     return data
   } catch (error) {
     throw new Error(extractErrorMessage(error))

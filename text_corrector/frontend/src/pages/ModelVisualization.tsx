@@ -182,19 +182,22 @@ export default function ModelVisualization() {
 
         {/* Neural Network Diagram */}
         <section>
-          <h2 className="text-lg font-bold text-gray-800 mb-2">Архитектура модели: Hybrid LSTM + BERT</h2>
+          <h2 className="text-lg font-bold text-gray-800 mb-2">Архитектура модели: KazRoBERTa</h2>
           <p className="text-sm text-gray-500 mb-4">
-            Интерактивная схема. Используйте колесо мыши для масштабирования, перетаскивание — для перемещения.
+            KazRoBERTa — трансформер на базе RoBERTa, предобученный для казахского языка:
+            RoBERTa-base · 12 слоёв энкодера · скрытая размерность 768 · 12 голов внимания ·
+            ~125 млн параметров. Колесо мыши — масштаб, перетаскивание — перемещение.
           </p>
           <div className="rounded-2xl overflow-hidden shadow-sm">
             <NeuralNetDiagram />
           </div>
           <div className="flex flex-wrap gap-3 mt-4">
             {[
-              { color: 'bg-blue-400', label: 'Входные данные' },
-              { color: 'bg-violet-500', label: 'BERT компоненты' },
-              { color: 'bg-orange-400', label: 'LSTM компоненты' },
-              { color: 'bg-green-500', label: 'Слияние и выход' },
+              { color: 'bg-blue-400', label: 'Вход и токенизация' },
+              { color: 'bg-cyan-500', label: 'Эмбеддинги' },
+              { color: 'bg-indigo-500', label: 'Encoder × 12' },
+              { color: 'bg-violet-500', label: 'Self-Attention' },
+              { color: 'bg-green-500', label: 'MLM-голова и выход' },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-1.5 text-xs text-gray-600">
                 <span className={`w-3 h-3 rounded-full ${item.color}`} />

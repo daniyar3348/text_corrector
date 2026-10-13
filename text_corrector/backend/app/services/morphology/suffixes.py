@@ -53,7 +53,6 @@ def _pick(stem: str, back: str, front: str) -> str:
 def make_plural(stem: str) -> str:
     """Көптік жалғау: -лар/-лер · -дар/-дер · -тар/-тер."""
     c = final_class(stem)
-    fc = stem.lower()[-1]
     if c == "V" or fc in set("руйл"):
         return _pick(stem, "лар", "лер")
     if fc in set("мнңжз"):

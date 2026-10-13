@@ -12,7 +12,7 @@ All API route handlers should import `run_correction_pipeline` from here.
 from __future__ import annotations
 
 import time
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 from app.core.config import settings
 from app.core.logging_config import logger
@@ -23,6 +23,17 @@ from app.services.text_correction import correct_text
 # ── Load models once at startup ───────────────────────────────────────────────
 _russian_model: BaseCorrectModel = load_model("Russian", settings.RUSSIAN_MODEL_PATH)
 _kazakh_model: BaseCorrectModel = load_model("Kazakh", settings.KAZAKH_MODEL_PATH)
+
+# Warm up any real (non-placeholder) model once, single-threaded, at import —
+# forces lazy torch/kernel init before concurrent threadpool requests arrive
+# (avoids a cold-burst lazy-init race + the ~200ms first-request latency).
+for _m in (_russian_model, _kazakh_model):
+    if not isinstance(_m, PlaceholderModel) and _m.is_ready:
+        try:
+            _m.correct("Сынақ мәтіні.")
+            logger.info("warmed up %s", _m.model_name)
+        except Exception as _exc:  # pragma: no cover
+            logger.warning("model warm-up failed: %s", _exc)
 
 
 def get_model_status() -> Dict[str, str]:
@@ -35,13 +46,21 @@ def get_model_status() -> Dict[str, str]:
     }
 
 
-def run_correction_pipeline(text: str) -> Dict[str, Any]:
+def run_correction_pipeline(
+    text: str,
+    language: Optional[str] = None,
+    confidence: Optional[float] = None,
+) -> Dict[str, Any]:
     """
     Full correction pipeline.
 
     Steps
     -----
-    1. Detect language.
+    1. Detect language — unless *language* is supplied, in which case detection
+       is skipped and the caller's routing decision is used. Document-level
+       callers need this: the router reads a whole text reliably, but judged
+       line by line it mistakes short non-Kazakh fragments for Kazakh and sends
+       them to the wrong corrector.
     2. Select the appropriate model.
     3. If the model is a real trained model (TransformerModel, is_ready=True),
        delegate directly to `model.correct(text)`.
@@ -52,10 +71,13 @@ def run_correction_pipeline(text: str) -> Dict[str, Any]:
     """
     start_ns = time.perf_counter_ns()
 
-    # ── Step 1: language detection ─────────────────────────────────────────
-    lang_result = detect_language(text)
-    language: str = lang_result["language"]
-    confidence: float = lang_result["confidence"]
+    # ── Step 1: language detection (skipped when the caller routes) ────────
+    if language is None:
+        lang_result = detect_language(text)
+        language = lang_result["language"]
+        confidence = lang_result["confidence"]
+    elif confidence is None:
+        confidence = 1.0
 
     # ── Step 2: choose model ───────────────────────────────────────────────
     if language == "Russian":

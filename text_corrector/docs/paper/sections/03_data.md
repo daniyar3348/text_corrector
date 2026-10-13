@@ -1,0 +1,44 @@
+# Data and Error Modeling
+
+This section describes the construction of the parallel corpus used to train and evaluate the system, proceeding from the raw source corpus through a deterministic cleaning pipeline, the error taxonomy, and the synthetic generation of correct–corrupted pairs. Because no gold-standard, human-annotated corpus of Kazakh spelling errors exists at the scale required for supervised training, we follow the standard practice of programmatically injecting errors into clean reference text [grundkiewicz2019synthetic]. The central modeling decision is to make the error distribution dominated by the *ka2ru* look-alike phenomenon, which prior Kazakh correction work has not modeled explicitly [baitenova2025hybrid].
+
+## Source Corpus
+
+The raw material is a single merged JSON file (`merged_dissertation.json`) of $568{,}374{,}253$ bytes (approximately $568$ MB) containing Kazakh-language historical articles harvested from the *ehistory* domain; the WORKLOG records $93{,}218$ articles. The corpus is descriptive rather than prescriptive: it reflects published written Kazakh as it appears online, including occasional non-standard spellings. This property matters for interpreting later results, since attested non-normative forms are treated as valid by the lexicon and are therefore not auto-corrected. While general-purpose Kazakh corpora could serve a similar role [makhambetov2013kazcorpus], the *ehistory* collection was chosen for its topical coherence and the predominance of well-formed sentences.
+
+## Cleaning Pipeline
+
+Raw web text is converted to a clean ground-truth set through a deterministic, reproducible pipeline (`kk_text.py`) applied uniformly to every article.
+
+1. **Unicode normalization.** Text is normalized to NFC so that canonically equivalent code-point sequences are unified.
+2. **Look-alike normalization.** A small mapping rewrites two confusable letter pairs to their intended Kazakh code points: the Latin schwa (ə/Ə $\rightarrow$ ә/Ә) and the Serbian/Cyrillic tshe (ћ/Ћ $\rightarrow$ һ/Һ). This removes encoding-level confusables only and is distinct from the deliberately injected *ka2ru* errors discussed below.
+3. **Invisible-character stripping.** Soft hyphens (U+00AD), zero-width and bidirectional control characters (U+200B–200F, U+202A–202E, U+2060–206F), Private Use Area code points (U+E000–F8FF), and the byte-order mark (U+FEFF) are removed, since these are invisible to authors yet perturb tokenization.
+4. **Run-on segmentation.** A sentence-boundary fix splits run-on text at terminal punctuation; the rule requires at least two preceding lowercase letters before the mark so that initials and abbreviations (e.g. «т.б.») are not erroneously split. The WORKLOG reports that this reduces the run-on rate from approximately $9\%$ to $0.04\%$.
+5. **Foreign-script removal.** Tokens and bracketed groups in non-Cyrillic scripts (e.g. Latin insertions) are removed, while all Cyrillic content is retained.
+
+After cleaning, the WORKLOG reports that approximately $92\%$ of the resulting sentences satisfy Kazakh vowel harmony, which we take as corroboration that the cleaned text is suitable as clean ground truth. (Both the run-on and harmony figures are reported in the project log and are not recomputed here.) Following segmentation and exact-duplicate removal, the corpus contains $922{,}798$ unique clean sentences (`sentences.txt`), the pool from which all training and evaluation pairs are drawn.
+
+## Error Taxonomy
+
+Corruption is modeled as a composition of six elementary edit operations applied at the character or word level. Table X (dataset statistics) and Figure X (error-type distribution) summarize their realized frequencies, which differ from the sampling weights because operations apply to differing fractions of tokens.
+
+- **ka2ru** (realized $30.5\%$, $1{,}157{,}438$ edits). The flagship class: Kazakh-specific Cyrillic letters are replaced by visually similar standard-Russian Cyrillic letters, modeling authors who lack or ignore the Kazakh keyboard layout. The substitution map is {ә→а, ө→о, ұ→у, ү→у, қ→к, ғ→г, ң→н, і→и, һ→х}; for example, *қазақ* ("Kazakh") becomes *казак*. The output remains Cyrillic and superficially resembles broken Russian, which is precisely why it also disrupts language identification. It carries the highest sampling weight ($0.45$) and is the dominant error.
+- **harmony** (realized $21.34\%$, $809{,}903$ edits). A vowel-harmony (сингармонизм) violation in which a vowel is replaced by its non-harmonic counterpart from a back/front pair such as а↔ә or о↔ө; for example, *өте* ("very") becomes *оте*.
+- **swap** (realized $17.93\%$, $680{,}471$ edits). Transposition of two adjacent characters, e.g. *мектеп* ("school") $\rightarrow$ *мекетп*; this motivates the transposition-aware edit distance used in the corrector [damerau1964technique].
+- **drop** (realized $11.91\%$, $451{,}816$ edits). Deletion of a single character, e.g. *маңызды* ("important") $\rightarrow$ *маңзды*.
+- **dup** (realized $9.64\%$, $366{,}027$ edits). Duplication of a character, e.g. *болып* ("being") $\rightarrow$ *боллып*.
+- **sub** (realized $8.68\%$, $329{,}509$ edits). Substitution of a character by an arbitrary other, modeling generic keystroke errors, e.g. *тұр* $\rightarrow$ *тыр*.
+
+These six operations cover the principal classes identified in the spelling-correction literature — insertion, deletion, substitution, and transposition [damerau1964technique; kukich1992techniques] — augmented by two phenomena specific to written Kazakh, namely *ka2ru* layout substitution and vowel-harmony violation. The emphasis on *ka2ru*, at roughly $31\%$ of all injected edits, distinguishes this dataset from generic confusion-set corpora.
+
+## Synthetic Pair Generation
+
+Errors are injected into the clean sentences by `build_kazakh_dataset.py` to form parallel pairs. Each clean sentence is corrupted at a per-character error rate of $0.12$, with at most $3$ errors per sentence (`max_errors = 3`) and a fixed random seed (`seed = 42`) for reproducibility. Operations are selected according to the sampling weights $[\text{ka2ru } 0.45,\ \text{harmony } 0.18,\ \text{swap } 0.13,\ \text{drop } 0.10,\ \text{dup } 0.07,\ \text{sub } 0.07]$, with the realized per-edit shares differing from these weights because operations apply to different fractions of candidate tokens. The training split is built with $\times 3$ augmentation, generating three independently corrupted variants per source sentence so the model observes diverse corruptions of the same target.
+
+To suppress over-correction — the tendency to alter already-correct words — a substantial fraction of pairs are *identity* (clean→clean) pairs in which the corrupted side equals the correct side. The realized clean ratio is $0.1086$ (approximately $11\%$), corresponding to $284{,}038$ pairs. These teach the detector to emit KEEP and the corrector to make no change when the input is already valid.
+
+Each pair is stored with the schema $\{\texttt{correct},\ \texttt{corrupted},\ \texttt{n\_errors},\ \texttt{clean},\ \texttt{edits}\}$, where `clean` is a boolean identity flag and `edits` is a list of operation records of the form $\{\texttt{type},\ \texttt{wi},\ \texttt{before},\ \texttt{after}\}$ giving the operation type, the word index, and the pre- and post-edit surface forms. This explicit metadata enables exact-edit verification: every corrupted sentence can be reconstructed from its correct counterpart by replaying the recorded edits, and the builder verifies this reconstruction, guaranteeing that the stored edits are exact rather than approximate.
+
+The data are partitioned into disjoint splits with no cross-split sentence leakage: a source sentence and all of its augmented variants reside entirely within a single split. The realized sizes are $2{,}565{,}771$ training pairs (from $872{,}798$ source sentences under $\times 3$ augmentation), $25{,}000$ validation pairs, and $25{,}000$ test pairs, for a combined total of $2{,}615{,}771$ pairs; we report the training split as $2{,}565{,}771$ and reserve $2{,}615{,}771$ for the full dataset. The per-sentence error count is distributed as $0\rightarrow 284{,}038$, $1\rightarrow 1{,}336{,}004$, $2\rightarrow 528{,}027$, and $3\rightarrow 467{,}702$, giving an average of $1.451$ errors per pair. Full statistics are reported in Table X and the error-type distribution in Figure X.
+
+We note one limitation of this construction, addressed more fully in the discussion: the errors are programmatically injected and therefore approximate, but do not exactly equal, the distribution produced by human typists. As no gold human-annotated Kazakh spelling-error test set is currently available, all reported metrics are computed against this synthetic distribution.

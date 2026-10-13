@@ -5,7 +5,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.serve
     container_name: turan_backend
     restart: unless-stopped
     env_file:
@@ -13,18 +13,24 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8000
+      # Activate the trained KazRoBERTa detector (baked into the image at
+      # /app/models/kazakh_detector); overrides any blank value in .env.
+      - KAZAKH_MODEL_PATH=/app/models/kazakh_detector
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      # Mount models directory for easy model replacement without rebuild
-      - ./models:/models:ro
+    # No model volume: the model is COPIED into the serving image (self-contained).
+    # To iterate on the model without rebuilding, temporarily add:
+    #   volumes:
+    #     - ./backend/models/kazakh_detector:/app/models/kazakh_detector:ro
     healthcheck:
+      # Assert the REAL detector is loaded (fail, not green, if it silently fell
+      # back to PlaceholderModel). Covers torch import + 316MB model + lexicon.
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+             "import urllib.request,json,sys; d=json.load(urllib.request.urlopen('http://localhost:8000/health',timeout=5)); x=d['details']; sys.exit(0 if x.get('kazakh_model_ready')=='True' and 'TransformerModel' in x.get('kazakh_model','') else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 120s
     networks:
       - turan_net
 
@@ -48,6 +54,3 @@ services:
 networks:
   turan_net:
     driver: bridge
-
-volumes:
-  models:

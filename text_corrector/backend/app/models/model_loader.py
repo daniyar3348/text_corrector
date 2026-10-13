@@ -82,20 +82,17 @@ class PlaceholderModel(BaseCorrectModel):
 
 class TransformerModel(BaseCorrectModel):
     """
-    Skeleton integration for a HuggingFace-compatible seq2seq model.
+    KazRoBERTa error-DETECTOR (token classification) + rule/lexicon CORRECTOR.
 
-    How to complete this integration
-    ---------------------------------
-    1. Train or download a model (e.g. T5, mBART, BERT-based spell-checker).
-    2. Set the path in .env:
-           RUSSIAN_MODEL_PATH=/models/russian_spellcheck
-           KAZAKH_MODEL_PATH=/models/kazakh_spellcheck
-    3. Implement the `_run_inference()` method below using the Transformers
-       library (or ONNX Runtime for faster CPU inference).
-    4. Optionally add batching, caching, or beam-search parameters.
+    Unified Kazakh correction mechanism:
+      • the fine-tuned detector tags each token KEEP / ERROR;
+      • `KazakhCorrector` fixes the flagged words (inverse ru↔kk rules +
+        lexicon + OSA edit-distance).
 
-    The pipeline and API will automatically use this model when the path
-    is configured, with no changes required elsewhere.
+    Activates when *model_path* holds a HuggingFace token-classification model
+    (see scripts/train_detector.py / colab_train_detector.ipynb) AND
+    torch+transformers are installed; otherwise falls back to PlaceholderModel.
+    Set the path via KAZAKH_MODEL_PATH in .env.
     """
 
     def __init__(self, model_path: str, language: str) -> None:
@@ -103,6 +100,7 @@ class TransformerModel(BaseCorrectModel):
         self._model_path = model_path
         self._model = None
         self._tokenizer = None
+        self._corrector = None
         self._ready = False
 
         self._load(model_path)
@@ -110,7 +108,7 @@ class TransformerModel(BaseCorrectModel):
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load(self, model_path: str) -> None:
-        """Load model artefacts from *model_path*."""
+        """Load the token-classification detector + Kazakh corrector."""
         if not os.path.exists(model_path):
             logger.warning(
                 "TransformerModel: path %s does not exist. "
@@ -120,53 +118,71 @@ class TransformerModel(BaseCorrectModel):
             return
 
         try:
-            # ── INSERT YOUR LOADING CODE HERE ────────────────────────────────
-            # Example using HuggingFace Transformers:
-            #
-            # from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-            # self._tokenizer = AutoTokenizer.from_pretrained(model_path)
-            # self._model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
-            # self._model.eval()
-            #
-            # Example using ONNX Runtime:
-            #
-            # import onnxruntime as ort
-            # self._session = ort.InferenceSession(
-            #     os.path.join(model_path, "model.onnx"),
-            #     providers=["CPUExecutionProvider"],
-            # )
-            # ─────────────────────────────────────────────────────────────────
+            import torch  # noqa: F401  (lazy: not installed in the API venv)
+            # Throughput here comes from serving requests concurrently across the
+            # FastAPI threadpool, not per-call multithreaded BLAS. Pin intra-op
+            # threads to 1 so concurrent inferences don't oversubscribe the CPU.
+            try:
+                torch.set_num_threads(1)
+            except Exception:
+                pass
+            from transformers import (
+                AutoModelForTokenClassification,
+                AutoTokenizer,
+            )
+
+            from app.services.kazakh_corrector import KazakhCorrector
+
+            self._tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+            self._model = AutoModelForTokenClassification.from_pretrained(model_path)
+            self._model.eval()
+            self._corrector = KazakhCorrector()
             self._ready = True
             logger.info(
-                "TransformerModel loaded for language=%s from %s",
+                "TransformerModel (detector+corrector) loaded for language=%s "
+                "from %s",
                 self._language,
                 model_path,
             )
-        except Exception as exc:
-            logger.error(
-                "Failed to load TransformerModel from %s: %s",
-                model_path,
-                exc,
+        except ImportError as exc:
+            logger.warning(
+                "torch/transformers unavailable (%s); using placeholder.", exc
             )
+        except Exception as exc:
+            logger.error("Failed to load detector from %s: %s", model_path, exc)
 
     # ── Inference ─────────────────────────────────────────────────────────────
 
     def _run_inference(self, text: str) -> str:
-        """
-        Run model inference on a single text string.
+        """Detector tags tokens → corrector fixes the flagged words."""
+        import torch
 
-        Replace the NotImplementedError body with your actual inference code.
-        """
-        # ── INSERT YOUR INFERENCE CODE HERE ─────────────────────────────────
-        # Example using HuggingFace Transformers:
-        #
-        # inputs = self._tokenizer(
-        #     text, return_tensors="pt", max_length=512, truncation=True
-        # )
-        # outputs = self._model.generate(**inputs, max_new_tokens=512)
-        # return self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # ────────────────────────────────────────────────────────────────────
-        raise NotImplementedError("TransformerModel._run_inference() not implemented.")
+        words = text.split()
+        if not words:
+            return text
+
+        enc = self._tokenizer(
+            words, is_split_into_words=True, truncation=True,
+            max_length=512, return_tensors="pt",
+        )
+        with torch.no_grad():
+            logits = self._model(**enc).logits[0]
+        preds = logits.argmax(-1).tolist()
+
+        # первая под-токен метка каждого слова; label==1 → ERROR
+        error_pos: set[int] = set()
+        prev = None
+        for tok_idx, wid in enumerate(enc.word_ids(0)):
+            if wid is None or wid == prev:
+                prev = wid
+                continue
+            prev = wid
+            if preds[tok_idx] == 1:
+                error_pos.add(wid)
+
+        if not error_pos:
+            return text
+        return self._corrector.correct(text, only_positions=error_pos)
 
     def correct(self, text: str) -> str:
         if not self._ready:
@@ -195,7 +211,9 @@ def load_model(language: str, model_path: Optional[str] = None) -> BaseCorrectMo
     If *model_path* is set and the path exists, a TransformerModel is
     returned; otherwise a PlaceholderModel is used.
     """
-    if model_path:
+    # Treat empty/whitespace as unset (e.g. a blank `KAZAKH_MODEL_PATH=` in .env)
+    # so it falls back to the placeholder instead of trying to load the path "".
+    if model_path and model_path.strip():
         model = TransformerModel(model_path=model_path, language=language)
         if model.is_ready:
             return model

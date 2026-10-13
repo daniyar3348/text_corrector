@@ -14,13 +14,12 @@ client = TestClient(app)
 # ── Unit tests for correction services ───────────────────────────────────────
 
 class TestCorrectRussian:
-    def test_typo_privet(self):
-        """The classic demonstration: прмвет → привет."""
+    def test_russian_is_noop(self):
+        """Russian path is intentionally a no-op (no trained RU model; the demo
+        dictionary corrupted valid Russian). Text passes through unchanged."""
         corrected, corrections = correct_russian("прмвет")
-        assert corrected == "привет"
-        assert len(corrections) == 1
-        assert corrections[0]["before"] == "прмвет"
-        assert corrections[0]["after"] == "привет"
+        assert corrected == "прмвет"
+        assert corrections == []
 
     def test_no_change_for_valid_word(self):
         corrected, corrections = correct_russian("привет")
@@ -41,11 +40,12 @@ class TestCorrectRussian:
         # Should return capitalised correction
         assert corrected[0].isupper()
 
-    def test_multi_word_correction(self):
+    def test_multi_word_noop(self):
         text = "прмвет мр"
         corrected, corrections = correct_russian(text)
-        # At least one correction expected
-        assert len(corrections) >= 1
+        # Russian is a no-op: nothing changed
+        assert corrected == text
+        assert corrections == []
 
 
 class TestCorrectKazakh:
@@ -57,8 +57,9 @@ class TestCorrectKazakh:
 
 class TestCorrectTextDispatch:
     def test_routes_to_russian(self):
+        # Russian routing still works, but the Russian path is now a no-op.
         corrected, _ = correct_text("прмвет", "Russian")
-        assert corrected == "привет"
+        assert corrected == "прмвет"
 
     def test_unknown_language_passthrough(self):
         original = "xyz123"
@@ -70,12 +71,13 @@ class TestCorrectTextDispatch:
 # ── Integration tests via HTTP client ────────────────────────────────────────
 
 class TestCorrectTextEndpoint:
-    def test_correct_privet_typo(self):
+    def test_correct_russian_passthrough(self):
+        # Russian is a no-op: text returned unchanged, still detected Russian.
         response = client.post("/correct-text", json={"text": "прмвет"})
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert data["corrected_text"] == "привет"
+        assert data["corrected_text"] == "прмвет"
         assert data["detected_language"] == "Russian"
         assert isinstance(data["corrections"], list)
         assert isinstance(data["processing_time_ms"], float)

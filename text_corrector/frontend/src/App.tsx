@@ -5,34 +5,79 @@ import { CorrectionResult } from '@/components/CorrectionResult'
 import { StatusMessage } from '@/components/StatusMessage'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { DemoExamples } from '@/components/DemoExamples'
+import { FileUploadButton } from '@/components/FileUploadButton'
+import { FileCorrectionResult } from '@/components/FileCorrectionResult'
 import { useLanguageDetection } from '@/hooks/useLanguageDetection'
 import { useTextCorrection } from '@/hooks/useTextCorrection'
+import { useFileCorrection } from '@/hooks/useFileCorrection'
 
 const MAX_CHARS = 5000
 
 export default function App() {
   const [inputText, setInputText] = useState('')
+  const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { language, confidence, loading: langLoading } = useLanguageDetection(inputText)
   const { result, status, error, correct, reset } = useTextCorrection()
+  const {
+    result: fileResult,
+    status: fileStatus,
+    error: fileError,
+    filename,
+    upload: uploadFile,
+    reset: resetFile,
+  } = useFileCorrection()
 
   const charCount = inputText.length
   const isOverLimit = charCount > MAX_CHARS
-  const isLoading = status === 'loading'
+  const fileLoading = fileStatus === 'loading'
+  const isLoading = status === 'loading' || fileLoading
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
   const handleCorrect = useCallback(async () => {
     if (!inputText.trim() || isOverLimit || isLoading) return
+    resetFile()
     await correct(inputText)
-  }, [inputText, isOverLimit, isLoading, correct])
+  }, [inputText, isOverLimit, isLoading, correct, resetFile])
 
   const handleClear = useCallback(() => {
     setInputText('')
     reset()
+    resetFile()
     textareaRef.current?.focus()
-  }, [reset])
+  }, [reset, resetFile])
+
+  // A file and a pasted snippet are two different jobs — starting one clears
+  // the other's result so the right column never shows a stale answer.
+  const handleFileSelect = useCallback(
+    async (file: File) => {
+      reset()
+      await uploadFile(file)
+    },
+    [reset, uploadFile],
+  )
+
+  const handleInsertIntoEditor = useCallback(
+    (text: string) => {
+      setInputText(text)
+      resetFile()
+      textareaRef.current?.focus()
+    },
+    [resetFile],
+  )
+
+  // Dropping a file onto the textarea does the same as the upload button
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragging(false)
+      const file = e.dataTransfer.files?.[0]
+      if (file) handleFileSelect(file)
+    },
+    [handleFileSelect],
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -147,7 +192,21 @@ export default function App() {
               </div>
 
               {/* Textarea */}
-              <div className="p-4">
+              <div
+                className="p-4 relative"
+                onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
+              >
+                {dragging && (
+                  <div className="absolute inset-4 z-10 rounded-xl border-2 border-dashed
+                                  border-primary-400 bg-primary-50/90 backdrop-blur-[1px]
+                                  flex items-center justify-center pointer-events-none">
+                    <span className="text-sm font-semibold text-primary-700">
+                      📄 Отпустите файл, чтобы исправить его
+                    </span>
+                  </div>
+                )}
                 <textarea
                   ref={textareaRef}
                   value={inputText}
@@ -202,6 +261,12 @@ export default function App() {
                   {isLoading ? 'Исправление…' : 'Исправить текст'}
                 </button>
 
+                <FileUploadButton
+                  onSelect={handleFileSelect}
+                  disabled={isLoading}
+                  busy={fileLoading}
+                />
+
                 <button
                   onClick={handleClear}
                   disabled={isLoading}
@@ -248,8 +313,50 @@ export default function App() {
             {/* Status message */}
             <StatusMessage status={status} error={error} />
 
+            {/* File: in progress */}
+            {fileLoading && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm
+                              p-5 flex items-center gap-3">
+                <LoadingSpinner size="sm" label="" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-700 truncate">
+                    {filename}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Читаем файл и исправляем текст целиком…
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* File: failed */}
+            {fileStatus === 'error' && fileError && (
+              <div className="bg-red-50 rounded-2xl border border-red-200 p-4
+                              flex items-start gap-2.5">
+                <span className="text-lg leading-none">⚠</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-700 truncate">
+                    {filename}
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5">{fileError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* File: result */}
+            {fileStatus === 'success' && fileResult && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm
+                              p-5 animate-slide-up">
+                <FileCorrectionResult
+                  result={fileResult}
+                  onInsert={handleInsertIntoEditor}
+                  insertLimit={MAX_CHARS}
+                />
+              </div>
+            )}
+
             {/* Idle state placeholder */}
-            {status === 'idle' && (
+            {status === 'idle' && fileStatus === 'idle' && (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200
                               p-8 flex flex-col items-center justify-center text-center
                               min-h-[200px] space-y-3">
@@ -268,7 +375,7 @@ export default function App() {
             )}
 
             {/* How it works — only shown in idle */}
-            {status === 'idle' && (
+            {status === 'idle' && fileStatus === 'idle' && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
                 <h3 className="text-sm font-bold text-gray-800">Как это работает</h3>
                 <ol className="space-y-3">

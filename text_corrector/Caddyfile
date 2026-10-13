@@ -1,0 +1,12 @@
+# Caddy — публичный reverse-proxy с авто-HTTPS (Let's Encrypt).
+# {$DOMAIN} берётся из переменной окружения (см. .env.prod / docker-compose.prod.yml).
+# Caddy сам получит и будет продлевать TLS-сертификат для DOMAIN
+# (нужны: A-запись DOMAIN → IP сервера и открытые порты 80/443).
+#
+# frontend (nginx) отдаёт SPA и сам проксирует /api/ → backend:8000,
+# поэтому Caddy достаточно проксировать весь трафик на frontend.
+
+{$DOMAIN} {
+	encode gzip zstd
+	reverse_proxy frontend:80
+}

@@ -19,7 +19,7 @@ router = APIRouter()
     summary="Detect the language of the input text",
     tags=["Language Detection"],
 )
-async def detect_language_endpoint(body: TextRequest) -> LanguageDetectionResponse:
+def detect_language_endpoint(body: TextRequest) -> LanguageDetectionResponse:
     """
     Detect whether the input text is **Russian**, **Kazakh**, **Mixed**, or **Unknown**.
 

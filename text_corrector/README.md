@@ -29,7 +29,7 @@ text_corrector/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/          # FastAPI route handlers
-│   │   │   ├── correction.py    # POST /correct-text
+│   │   │   ├── correction.py    # POST /correct-text, /correct-file
 │   │   │   ├── detection.py     # POST /detect-language
 │   │   │   └── health.py        # GET  /health
 │   │   ├── core/
@@ -132,6 +132,43 @@ Detect the language and return a corrected version of the text.
   "status": "success"
 }
 ```
+
+---
+
+### `POST /correct-file`
+
+Upload a document and correct **all** of its text. `multipart/form-data`, field
+name `file`; accepts `.txt`, `.md`, `.csv`, `.tsv`, `.log`, `.docx`, `.pdf` up
+to `MAX_FILE_SIZE_MB` (5 MB).
+
+Unlike `/correct-text` this is not limited to one sentence: the document is
+corrected one sentence per model pass and its layout — newlines, indentation,
+blank lines — is returned untouched.
+
+**Request:**
+```bash
+curl -F "file=@document.docx" http://127.0.0.1:8010/correct-file
+```
+
+**Response:** same fields as `/correct-text`, plus
+```json
+{
+  "filename": "document.docx",
+  "file_type": "docx",
+  "corrections_total": 336,
+  "total_words": 485,
+  "corrected_words": 336,
+  "chunks": 95
+}
+```
+`corrections[]` is capped at `MAX_FILE_CORRECTIONS` (1000) — `corrections_total`
+reports the real count, and `corrected_text` always contains every fix.
+
+| Status | Meaning |
+|---|---|
+| `413` | file exceeds `MAX_FILE_SIZE_MB` |
+| `415` | unsupported extension (`.doc`, `.exe`, …) |
+| `422` | empty file, or no text layer (scanned PDF) |
 
 ---
 

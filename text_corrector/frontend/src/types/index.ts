@@ -27,6 +27,25 @@ export interface CorrectionResponse {
   message?: string | null
 }
 
+export interface FileCorrectionResponse {
+  filename: string
+  file_type: string
+  original_text: string
+  corrected_text: string
+  detected_language: Language
+  confidence: number
+  corrections: CorrectionItem[]
+  /** May exceed `corrections.length` — the list is capped, the text is not. */
+  corrections_total: number
+  total_words: number
+  corrected_words: number
+  /** Model passes used for this document (one per sentence). */
+  chunks: number
+  processing_time_ms: number
+  status: 'success' | 'error'
+  message?: string | null
+}
+
 export interface HealthResponse {
   service_status: string
   model_status: string
