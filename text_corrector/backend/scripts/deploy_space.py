@@ -22,9 +22,10 @@ from huggingface_hub import CommitOperationAdd, CommitOperationDelete, HfApi
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULT_SPACE = "daniyar51/turan-text-corrector"
-# Origins of the pages that call the API (GitHub Pages). JSON list: read by
-# pydantic-settings into Settings.ALLOWED_ORIGINS.
-DEFAULT_ORIGINS = '["https://daniyar3348.github.io"]'
+# Origins of the pages that call the API (GitHub Pages and its custom domain).
+# JSON list: read by pydantic-settings into Settings.ALLOWED_ORIGINS.
+DEFAULT_ORIGINS = ('["https://correctecor.kz", "https://www.correctecor.kz", '
+                   '"https://daniyar3348.github.io"]')
 
 # local path (relative to backend/) -> path in the Space repo
 FIXED_FILES = {

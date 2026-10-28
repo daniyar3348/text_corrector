@@ -13,7 +13,7 @@ short_description: Kazakh spelling correction (KazRoBERTa + lexicon)
 
 Исправление орфографии казахского текста: детектор ошибок KazRoBERTa
 (token classification, KEEP / ERROR) + корректор по словарю. Страница демо:
-https://daniyar3348.github.io/turan-demo/
+https://correctecor.kz
 
 - `POST /correct-text` — `{"text": "Бул маселе оте манызды."}` → исправленный текст и список исправлений
 - `POST /correct-file` — документ `.txt`, `.docx`, `.pdf` … до 5 МБ
