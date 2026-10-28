@@ -97,15 +97,24 @@ def run_correction_pipeline(
     else:
         # Real trained model is available
         corrected_text = model.correct(text)
-        # For trained models, build a simple diff-based correction list
+        # The corrector substitutes words in place, so list one item per
+        # changed word; fall back to a whole-text item if the count changed.
         if corrected_text != text:
-            corrections_list = [
-                {
-                    "before": text,
-                    "after": corrected_text,
-                    "type": "model_correction",
-                }
-            ]
+            before_words, after_words = text.split(), corrected_text.split()
+            if len(before_words) == len(after_words):
+                corrections_list = [
+                    {"before": b, "after": a, "type": "spelling"}
+                    for b, a in zip(before_words, after_words)
+                    if b != a
+                ]
+            else:
+                corrections_list = [
+                    {
+                        "before": text,
+                        "after": corrected_text,
+                        "type": "model_correction",
+                    }
+                ]
 
     elapsed_ms = (time.perf_counter_ns() - start_ns) / 1_000_000
 

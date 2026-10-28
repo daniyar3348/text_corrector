@@ -1,5 +1,6 @@
 """
-Whole-document correction.
+Whole-document correction — used by both ``/correct-file`` and
+``/correct-text`` (pasted text has the same length and layout problems).
 
 Why this module exists
 ----------------------
@@ -50,6 +51,14 @@ _WS_SPLIT = re.compile(r"(\s+)")
 _SENT_END = re.compile(r"[.!?…][\"»\')\]]*$")
 
 _NEWLINE = "\n"
+
+# Only Kazakh has a corrector; everything else is returned unchanged and the
+# response must say so instead of implying the text is already correct.
+_UNCHECKED_LANG = {
+    "Russian": "русский",
+    "Mixed": "смешанный",
+    "Unknown": "нераспознанный",
+}
 
 
 def _sentence_chunks(
@@ -165,6 +174,12 @@ def correct_document(text: str) -> Dict[str, Any]:
     listed = corrections[: settings.MAX_FILE_CORRECTIONS]
 
     notes: List[str] = []
+    if language != "Kazakh":
+        notes.append(
+            "Исправляется только казахский текст. Язык текста определён как "
+            f"{_UNCHECKED_LANG.get(language, language)} — текст возвращён без "
+            "проверки."
+        )
     if total_corrections > len(listed):
         notes.append(
             f"Показаны первые {len(listed)} правок из {total_corrections}; "

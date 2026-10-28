@@ -108,6 +108,31 @@ class TestCorrectTextEndpoint:
         data = response.json()
         assert 0.0 <= data["confidence"] <= 1.0
 
+    def test_russian_is_reported_as_unchecked(self):
+        """No Russian corrector: the response must not imply the text is correct."""
+        data = client.post("/correct-text", json={"text": "прмвет мр"}).json()
+        assert data["corrected_text"] == "прмвет мр"
+        assert "только казахский" in data["message"]
+
+    def test_kazakh_has_no_unchecked_note(self):
+        data = client.post("/correct-text", json={"text": "Сәлем Қазақстан"}).json()
+        assert data["detected_language"] == "Kazakh"
+        assert data["message"] is None
+
+    def test_line_breaks_are_preserved(self):
+        """Pasted text is corrected sentence by sentence, keeping its layout."""
+        text = "Бірінші жол.\n\n    Екінші жол."
+        data = client.post("/correct-text", json={"text": text}).json()
+        assert data["corrected_text"].count("\n") == 2
+        assert "\n\n    " in data["corrected_text"]
+
+    def test_corrections_are_per_word(self):
+        """One item per changed word with its offset — not the whole text."""
+        data = client.post("/correct-text", json={"text": "кітп оқиды"}).json()
+        assert data["corrected_text"] == "кітап оқиды"
+        assert [(c["before"], c["after"], c["position"])
+                for c in data["corrections"]] == [("кітп", "кітап", 0)]
+
 
 class TestDetectLanguageEndpoint:
     def test_russian_text(self):

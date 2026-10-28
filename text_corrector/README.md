@@ -1,7 +1,9 @@
 # Turan Text Corrector
 
-Automatic spelling correction platform for **Russian** and **Kazakh** text,
-built as a research and pilot-implementation prototype for educational institutions.
+Automatic spelling correction platform for **Kazakh** text (KazRoBERTa error
+detector + lexicon/rule corrector), built as a research and pilot-implementation
+prototype for educational institutions. Russian text is recognised but returned
+unchanged — there is no Russian corrector.
 
 ---
 
@@ -9,8 +11,8 @@ built as a research and pilot-implementation prototype for educational instituti
 
 | Feature | Status |
 |---|---|
-| Russian spell correction | ✅ |
 | Kazakh spell correction | ✅ |
+| Russian spell correction | ❌ detected, passed through unchanged (response says so) |
 | Kazakh morphological analysis (stem + suffix parsing) | ✅ |
 | Automatic language detection | ✅ |
 | Confidence scoring | ✅ |
@@ -111,27 +113,37 @@ npm run dev                        # starts at http://localhost:5173
 
 ### `POST /correct-text`
 
-Detect the language and return a corrected version of the text.
+Detect the language and return a corrected version of the text. Like
+`/correct-file`, the text is corrected one sentence per model pass, so line
+breaks are kept and long input is checked to the end. `corrections[]` has one
+item per changed word; `position` is its offset in `original_text`.
 
 **Request:**
 ```json
-{ "text": "прмвет мр" }
+{ "text": "Бул маселе оте манызды." }
 ```
 
 **Response:**
 ```json
 {
-  "original_text": "прмвет мр",
-  "corrected_text": "привет мр",
-  "detected_language": "Russian",
-  "confidence": 0.7,
+  "original_text": "Бул маселе оте манызды.",
+  "corrected_text": "Бұл мәселе өте маңызды.",
+  "detected_language": "Kazakh",
+  "confidence": 0.99,
   "corrections": [
-    { "before": "прмвет", "after": "привет", "type": "spelling" }
+    { "before": "Бул",      "after": "Бұл",      "type": "spelling", "position": 0 },
+    { "before": "маселе",   "after": "мәселе",   "type": "spelling", "position": 4 },
+    { "before": "оте",      "after": "өте",      "type": "spelling", "position": 11 },
+    { "before": "манызды.", "after": "маңызды.", "type": "spelling", "position": 15 }
   ],
-  "processing_time_ms": 12.4,
-  "status": "success"
+  "processing_time_ms": 8.8,
+  "status": "success",
+  "message": null
 }
 ```
+
+Text detected as anything other than Kazakh (`Russian`, `Mixed`, `Unknown`) is
+returned unchanged with `message`: *«Исправляется только казахский текст…»*.
 
 ---
 
@@ -141,9 +153,8 @@ Upload a document and correct **all** of its text. `multipart/form-data`, field
 name `file`; accepts `.txt`, `.md`, `.csv`, `.tsv`, `.log`, `.docx`, `.pdf` up
 to `MAX_FILE_SIZE_MB` (5 MB).
 
-Unlike `/correct-text` this is not limited to one sentence: the document is
-corrected one sentence per model pass and its layout — newlines, indentation,
-blank lines — is returned untouched.
+The document is corrected one sentence per model pass and its layout —
+newlines, indentation, blank lines — is returned untouched.
 
 **Request:**
 ```bash

@@ -13,7 +13,6 @@ from app.schemas.responses import (
     CorrectionResponse,
     FileCorrectionResponse,
 )
-from app.services.correction_pipeline import run_correction_pipeline
 from app.services.document_correction import correct_document
 from app.services.file_extraction import (
     FileExtractionError,
@@ -37,10 +36,15 @@ def correct_text_endpoint(body: TextRequest) -> CorrectionResponse:
     Detect the language of the input, then apply the appropriate correction
     pipeline.
 
-    Declared as a SYNC ``def`` on purpose: ``run_correction_pipeline`` is
-    CPU-bound (torch inference + corrector). FastAPI runs sync path operations
-    in the AnyIO worker threadpool, keeping the event loop free so requests are
-    served concurrently instead of serialised. **Do NOT add ``async``.**
+    Pasted text goes through the same sentence-by-sentence path as uploaded
+    files (``correct_document``): the detector is trained on single sentences
+    and truncates at 512 subtokens, and a single pass would also flatten line
+    breaks. This keeps the layout and returns one correction per changed word.
+
+    Declared as a SYNC ``def`` on purpose: the correction is CPU-bound (torch
+    inference + corrector). FastAPI runs sync path operations in the AnyIO
+    worker threadpool, keeping the event loop free so requests are served
+    concurrently instead of serialised. **Do NOT add ``async``.**
 
     Returns the **original** text, the **corrected** text, a list of
     per-token corrections, the detected language, and timing metadata.
@@ -53,7 +57,7 @@ def correct_text_endpoint(body: TextRequest) -> CorrectionResponse:
             detail="Input text is empty after sanitisation.",
         )
 
-    result = run_correction_pipeline(text)
+    result = correct_document(text)
 
     # Map raw correction dicts → Pydantic models
     correction_items = [

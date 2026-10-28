@@ -93,7 +93,9 @@ export const FileCorrectionResult: React.FC<FileCorrectionResultProps> = ({
             </span>
           </span>
           <span className="text-xs text-gray-400 font-mono">
-            {(result.processing_time_ms / 1000).toFixed(1)} с
+            {result.processing_time_ms < 1000
+              ? `${Math.round(result.processing_time_ms)} мс`
+              : `${(result.processing_time_ms / 1000).toFixed(1)} с`}
           </span>
         </div>
       </div>

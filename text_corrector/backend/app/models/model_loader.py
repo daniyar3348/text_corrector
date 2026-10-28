@@ -180,9 +180,11 @@ class TransformerModel(BaseCorrectModel):
             if preds[tok_idx] == 1:
                 error_pos.add(wid)
 
-        if not error_pos:
-            return text
-        return self._corrector.correct(text, only_positions=error_pos)
+        # The corrector runs even with no flags: it still fixes unflagged ka2ru
+        # noise (see KazakhCorrector use_shadow). It re-joins words with single
+        # spaces, so return the input untouched when no word changed.
+        fixed = self._corrector.correct(text, only_positions=error_pos)
+        return text if fixed.split() == words else fixed
 
     def correct(self, text: str) -> str:
         if not self._ready:

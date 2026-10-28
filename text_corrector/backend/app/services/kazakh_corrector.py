@@ -12,6 +12,11 @@ kazakh_corrector.py — модуль исправления казахских �
 Ранжирование: сначала инверсные валидные (по частоте), иначе ближайший по
 расстоянию (тай-брейк по частоте). Валидность = наличие в лексиконе.
 
+«Тень» (use_shadow): слово, которое детектор НЕ пометил, всё равно чинится,
+если это редкая форма, у которой есть инверсный вариант в десятки раз чаще
+(«казакстан» 3 → «қазақстан» 41k, «салем» 6 → «сәлем» 197). Корпус содержит
+такой ka2ru-шум, поэтому он попадает в лексикон и детектор считает его нормой.
+
 Оценка при oracle-детекции (test.jsonl): 88% исправлено, 91.6% точность
 изменений (ka2ru 98% / harmony 98% / dup 93% / swap 83% / sub 70% / drop 62%).
 """
@@ -41,17 +46,34 @@ ALT = {
     "х": ["һ"], "һ": ["х"],
 }
 
+# Только ka2ru-направление (русский двойник → казахская буква) — для «тени».
+# Обратные замены (ң→н) и сингармонизм (ы↔і) там ломают валидные редкие формы:
+# «жылың» (твой год) → «жылын», «Тұн» → «Түн».
+KA2RU_FIX = {
+    "а": ["ә"], "о": ["ө"], "у": ["ұ", "ү"], "к": ["қ"],
+    "г": ["ғ"], "н": ["ң"], "и": ["і"], "х": ["һ"],
+}
+
 
 class KazakhCorrector:
     def __init__(self, lexicon_path: str = DEFAULT_LEXICON,
-                 min_count: int = 2, max_alt_positions: int = 6,
+                 min_count: int = 2, max_alt_positions: int = 8,
                  use_morph: bool = False, use_inverse: bool = True,
-                 use_osa: bool = True):
+                 use_osa: bool = True, use_shadow: bool = True,
+                 shadow_max_freq: int = 10, shadow_ratio: int = 20,
+                 shadow_min_freq: int = 50):
         # Component flags (defaults preserve the original behaviour; the morph
         # guard is opt-in so ablation studies can toggle each component).
         self.use_morph = use_morph
         self.use_inverse = use_inverse
         self.use_osa = use_osa
+        self.use_shadow = use_shadow
+        # Shadow fix: the word occurs at most shadow_max_freq times, and its
+        # best inverse variant is ≥ shadow_ratio× more frequent and occurs at
+        # least shadow_min_freq times.
+        self.shadow_max_freq = shadow_max_freq
+        self.shadow_ratio = shadow_ratio
+        self.shadow_min_freq = shadow_min_freq
         self._morph_fn = None
         self.freq: dict[str, int] = {}
         self.valid: set[str] = set()
@@ -71,8 +93,8 @@ class KazakhCorrector:
         self._pool_cache: dict[tuple, list[str]] = {}
 
     # ── кандидаты ───────────────────────────────────────────────────────────
-    def _inverse_candidates(self, w: str) -> set[str]:
-        pos = [i for i, ch in enumerate(w) if ch in ALT]
+    def _inverse_candidates(self, w: str, alt_map: dict = ALT) -> set[str]:
+        pos = [i for i, ch in enumerate(w) if ch in alt_map]
         if len(pos) > self.max_alt:           # ограничиваем взрыв комбинаций
             pos = pos[: self.max_alt]
         cur = {w}
@@ -80,7 +102,7 @@ class KazakhCorrector:
             nxt = set()
             for s in cur:
                 nxt.add(s)
-                for alt in ALT.get(s[i], ()):
+                for alt in alt_map.get(s[i], ()):
                     nxt.add(s[:i] + alt + s[i + 1:])
             cur = nxt
         cur.discard(w)
@@ -105,6 +127,25 @@ class KazakhCorrector:
         mind = min(d for _, d, _ in res)
         return max((c for c, d, _ in res if d == mind), key=lambda c: self.freq.get(c, 0))
 
+    def _shadow_variant(self, low: str) -> str | None:
+        """Доминирующий ka2ru-вариант редкой формы, иначе None."""
+        n = self.freq.get(low, 0)
+        if len(low) < 3 or n > self.shadow_max_freq:
+            return None
+        inv = [c for c in self._inverse_candidates(low, KA2RU_FIX)
+               if c in self.valid]
+        if not inv:
+            return None
+        best = max(inv, key=lambda c: self.freq[c])
+        m = self.freq[best]
+        if m >= self.shadow_min_freq and m >= self.shadow_ratio * max(n, 1):
+            return best
+        return None
+
+    def _shadow_word(self, word: str) -> str:
+        best = self._shadow_variant(word.lower())
+        return self._recase(word, best) if best else word
+
     def _analyzable(self, w: str) -> bool:
         """True if *w* is a valid inflected form of a known stem (morph guard)."""
         if not self.use_morph:
@@ -116,6 +157,8 @@ class KazakhCorrector:
 
     @staticmethod
     def _recase(orig: str, repl: str) -> str:
+        if len(orig) > 1 and orig.isupper():  # «ЖҰЙЕЛЕУ» → «ЖҮЙЕЛЕУ», не «Жүйелеу»
+            return repl.upper()
         return repl[:1].upper() + repl[1:] if orig[:1].isupper() else repl
 
     # ── публичное ───────────────────────────────────────────────────────────
@@ -149,9 +192,14 @@ class KazakhCorrector:
         force = only_positions is not None
         words = text.split()
         for i, w in enumerate(words):
-            if only_positions is not None and i not in only_positions:
-                continue
             if not WORD_RE.search(w):
+                continue
+            if only_positions is not None and i not in only_positions:
+                # Не помечено детектором — чиним только явный ka2ru-шум
+                # («тень» — часть инверсного механизма, выключается вместе с ним)
+                if self.use_shadow and self.use_inverse:
+                    words[i] = WORD_RE.sub(
+                        lambda m: self._shadow_word(m.group()), w)
                 continue
             words[i] = WORD_RE.sub(
                 lambda m: self.correct_word(m.group(), force=force), w)

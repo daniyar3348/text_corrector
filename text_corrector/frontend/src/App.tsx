@@ -159,9 +159,12 @@ export default function App() {
             Автоматическое исправление текста
             <br />
             <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Русский и Казахский
+              Казахский язык
             </span>
           </h1>
+          <p className="text-sm text-gray-500">
+            Русский текст распознаётся, но не исправляется.
+          </p>
 
         </section>
 
@@ -213,10 +216,10 @@ export default function App() {
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
-                    'Введите русский или казахский текст здесь…\n\nПримеры:\n' +
-                    '  прмвет        → привет\n' +
-                    '  здраствуйте  → здравствуйте\n' +
-                    '  сәем          → сәлем'
+                    'Введите казахский текст здесь…\n\nПримеры:\n' +
+                    '  Салем                → Сәлем\n' +
+                    '  Бул маселе манызды  → Бұл мәселе маңызды\n' +
+                    '  кітп оқиды           → кітап оқиды'
                   }
                   rows={9}
                   spellCheck={false}

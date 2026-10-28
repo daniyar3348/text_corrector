@@ -3,8 +3,12 @@
  *
  * Clicking an example card loads the text into the main input
  * and immediately triggers correction via the provided callback.
+ *
+ * Only Kazakh examples: Russian text is passed through unchanged (there is no
+ * Russian corrector), so a Russian card could only promise a fix that never
+ * happens. Every `expected` value here is what the API actually returns.
  */
-import React, { useState } from 'react'
+import React from 'react'
 
 export interface DemoExample {
   id: string
@@ -21,65 +25,34 @@ interface DemoExamplesProps {
 
 // ── Demo data ────────────────────────────────────────────────────────────────
 
-const RUSSIAN_DEMOS: DemoExample[] = [
-  {
-    id: 'ru-1',
-    label: 'Простое приветствие',
-    input: 'прмвет',
-    expected: 'привет',
-    note: 'Пропущена буква «и»',
-  },
-  {
-    id: 'ru-2',
-    label: 'Длинное слово',
-    input: 'здраствуйте',
-    expected: 'здравствуйте',
-    note: 'Пропущена буква «в»',
-  },
-  {
-    id: 'ru-3',
-    label: 'Технический текст',
-    input: 'кампютер не рабтает',
-    expected: 'компьютер не работает',
-    note: 'Два слова исправлены одновременно',
-  },
-  {
-    id: 'ru-4',
-    label: 'Учебная фраза',
-    input: 'Спасбо учтель',
-    expected: 'Спасибо учитель',
-    note: 'Регистр сохраняется',
-  },
-]
-
 const KAZAKH_DEMOS: DemoExample[] = [
   {
     id: 'kz-1',
     label: 'Қарапайым сәлем',
-    input: 'сәем',
-    expected: 'сәлем',
-    note: 'Missing «л» — Kazakh detected via «ә»',
+    input: 'Салем',
+    expected: 'Сәлем',
+    note: 'Русская «а» вместо казахской «ә»',
   },
   {
     id: 'kz-2',
-    label: 'Екі сөз қатесі',
-    input: 'Сәем рахет',
-    expected: 'Сәлем рахмет',
-    note: 'Two corrections in one phrase',
+    label: 'Орыс пернетақтасы',
+    input: 'Бул маселе оте манызды болып тур.',
+    expected: 'Бұл мәселе өте маңызды болып тұр.',
+    note: 'Набрано без казахских букв — исправлено 5 слов',
   },
   {
     id: 'kz-3',
-    label: 'Мектеп сөйлемі',
-    input: 'мен мектпте оқиды',
-    expected: 'мен мектепте оқиды',
-    note: 'Missing «е» in мектеп',
+    label: 'Жалғау',
+    input: 'Казакстан Республикасынын астанасы',
+    expected: 'Қазақстан Республикасының астанасы',
+    note: '«к» вместо «қ» и «н» вместо «ң» в окончании',
   },
   {
     id: 'kz-4',
     label: 'Кітап сөзі',
     input: 'кітп оқиды',
     expected: 'кітап оқиды',
-    note: 'Missing «а» — detected via «і»',
+    note: 'Пропущена буква «а»',
   },
 ]
 
@@ -87,19 +60,16 @@ const KAZAKH_DEMOS: DemoExample[] = [
 
 const DemoCard: React.FC<{
   demo: DemoExample
-  langColor: string
   onSelect: (text: string) => void
   disabled?: boolean
-}> = ({ demo, langColor, onSelect, disabled }) => (
+}> = ({ demo, onSelect, disabled }) => (
   <button
     onClick={() => onSelect(demo.input)}
     disabled={disabled}
-    className={`
-      group w-full text-left rounded-xl border p-4 transition-all duration-150
-      hover:shadow-md hover:-translate-y-0.5
-      disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0
-      ${langColor}
-    `}
+    className="group w-full text-left rounded-xl border p-4 transition-all duration-150
+               hover:shadow-md hover:-translate-y-0.5
+               disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0
+               bg-green-50 border-green-200 text-green-900 hover:border-green-400"
   >
     <div className="flex items-start justify-between gap-2 mb-2">
       <span className="text-xs font-semibold uppercase tracking-wide opacity-60">
@@ -128,64 +98,19 @@ const DemoCard: React.FC<{
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'russian' | 'kazakh'
-
 export const DemoExamples: React.FC<DemoExamplesProps> = ({
   onSelect,
   disabled,
-}) => {
-  const [activeTab, setActiveTab] = useState<Tab>('russian')
-
-  return (
-    <div className="space-y-4">
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        <button
-          onClick={() => setActiveTab('russian')}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150
-            ${activeTab === 'russian'
-              ? 'bg-white text-blue-700 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          🇷🇺 Russian
-        </button>
-        <button
-          onClick={() => setActiveTab('kazakh')}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150
-            ${activeTab === 'kazakh'
-              ? 'bg-white text-green-700 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          🇰🇿 Kazakh
-        </button>
-      </div>
-
-      {/* Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {activeTab === 'russian'
-          ? RUSSIAN_DEMOS.map((d) => (
-              <DemoCard
-                key={d.id}
-                demo={d}
-                langColor="bg-blue-50 border-blue-200 text-blue-900 hover:border-blue-400"
-                onSelect={onSelect}
-                disabled={disabled}
-              />
-            ))
-          : KAZAKH_DEMOS.map((d) => (
-              <DemoCard
-                key={d.id}
-                demo={d}
-                langColor="bg-green-50 border-green-200 text-green-900 hover:border-green-400"
-                onSelect={onSelect}
-                disabled={disabled}
-              />
-            ))}
-      </div>
-
-      <p className="text-xs text-gray-400 text-center">
-        Нажмите на карточку — пример загрузится и исправится автоматически
-      </p>
+}) => (
+  <div className="space-y-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {KAZAKH_DEMOS.map((d) => (
+        <DemoCard key={d.id} demo={d} onSelect={onSelect} disabled={disabled} />
+      ))}
     </div>
-  )
-}
+
+    <p className="text-xs text-gray-400 text-center">
+      Нажмите на карточку — пример загрузится и исправится автоматически
+    </p>
+  </div>
+)
