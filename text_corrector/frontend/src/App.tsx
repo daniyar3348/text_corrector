@@ -254,7 +254,7 @@ export default function App() {
               </div>
 
               {/* Action bar */}
-              <div className="flex items-center gap-3 px-4 pb-4">
+              <div className="flex flex-wrap items-center gap-3 px-4 pb-4">
                 <button
                   onClick={handleCorrect}
                   disabled={isLoading || !inputText.trim() || isOverLimit}
