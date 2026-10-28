@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-28 12:55
+
+**Task:** Публикация демо завершена: отдельный публичный репозиторий `daniyar3348/turan-demo` с GitHub Pages
+
+**Changed files:**
+- `frontend/src/App.tsx` — кнопки под полем ввода переносятся на узком экране (на 375 px «Очистить» обрезалась)
+- `~/Desktop/Projects/turan-demo` — репозиторий создан и запушен (160f844, aeb0f8b), Pages включены из `main` /
+
+**Notes:** Сайт https://daniyar3348.github.io/turan-demo/ работает с сервером https://daniyar51-turan-text-corrector.hf.space: статус «Модель загружена», пример «Бул маселе оте манызды болып тур.» → «Бұл мәселе өте маңызды болып тұр.» (5 исправлений), ошибок в консоли нет, на 375 px нет горизонтальной прокрутки. Прямая ссылка `/turan-demo/visualization` открывается через 404.html (HTTP-код 404, страница рабочая). Ручной запуск `keep-awake.yml` прошёл успешно.
+
+---
 ## 2026-10-28 12:50
 
 **Task:** Демо-сайт в интернете по схеме проекта Rustem: сервер с моделью в Docker Space на Hugging Face, страница на GitHub Pages
@@ -19,7 +30,5 @@
 - `~/Desktop/Projects/turan-demo` (отдельный репозиторий) — собранная страница, 404.html, .nojekyll, `keep-awake.yml`, README с результатами
 
 **Notes:** Space `daniyar51/turan-text-corrector` публичный, Docker, cpu-basic; собрался за ~3 мин, `/health` показывает TransformerModel, `/correct-text` ~100 мс, `/correct-file` работает. Прокси Hugging Face сам отражает любой Origin в `access-control-allow-origin`, поэтому `ALLOWED_ORIGINS` на Space фактически ничего не ограничивает (API и так публичный, куки не используются). Собранная страница проверена локально с живым Space: «Салем» → «Сәлем», ошибок в консоли нет. Коммиты text_corrector: 730f2eb, d4867fe, ba0e5c2 (не запушены).
-
-**Remaining:** Создать публичный репозиторий `daniyar3348/turan-demo` и включить Pages — `gh repo create … --public` заблокирован автофильтром разрешений, ждём пользователя. После этого проверить https://daniyar3348.github.io/turan-demo/ и переход на `/turan-demo/visualization`.
 
 ---

@@ -1,25 +1,25 @@
 # Progress
 
-**Last updated:** 2026-10-28 12:50
+**Last updated:** 2026-10-28 12:55
 
 ## Current Task
-Выложить сайт Turan в интернет по схеме проекта Rustem: сервер с моделью в Docker Space на Hugging Face, страница на GitHub Pages.
+Выложить сайт Turan в интернет: сервер с моделью в Docker Space на Hugging Face, страница на GitHub Pages.
 
 ## Completed Steps
-- Коммиты text_corrector в ветке `claude/bold-greider-0de332` (не запушены): 730f2eb, d4867fe, ba0e5c2
-- Space `daniyar51/turan-text-corrector` (публичный, Docker, cpu-basic) собран и работает: https://daniyar51-turan-text-corrector.hf.space — реальная модель, `/correct-text` и `/correct-file` проверены
-- `~/Desktop/Projects/turan-demo`: собранная страница + keep-awake Action + README, локальный коммит 160f844; проверено локально с живым Space
-- CHANGELOG.md и docs/changelog.md
+- Space `daniyar51/turan-text-corrector` (публичный, Docker, cpu-basic): https://daniyar51-turan-text-corrector.hf.space
+- Репозиторий `daniyar3348/turan-demo` (публичный) + GitHub Pages: https://daniyar3348.github.io/turan-demo/
+- Сайт проверен вживую (десктоп и 375 px), keep-awake Action проходит
+- Коммиты text_corrector в ветке `claude/bold-greider-0de332`: 730f2eb, d4867fe, ba0e5c2, bfc65cb + правка кнопок и этот файл
 
 ## In Progress
-- (нет) — ждём пользователя
+- (нет)
 
 ## Remaining
-- Создать публичный репозиторий `daniyar3348/turan-demo` и включить Pages: автофильтр заблокировал `gh repo create --public`
-- Проверить https://daniyar3348.github.io/turan-demo/ и `/turan-demo/visualization` (через 404.html)
+- Запушить ветку `claude/bold-greider-0de332` в daniyar3348/text_corrector (описание Space и README демо ссылаются на `deploy_space.py` и `build_pages.sh`) — по решению пользователя
+- По желанию: свой домен (.kz на hoster.kz), как у iuth-cyberbullying.kz
 
 ## Changed Files
-- см. CHANGELOG.md (запись 2026-10-28 12:50)
+- см. CHANGELOG.md
 
 ## Resume From
-В `~/Desktop/Projects/turan-demo`: `gh repo create daniyar3348/turan-demo --public --source . --remote origin --push`, затем `gh api -X POST repos/daniyar3348/turan-demo/pages -f 'source[branch]=main' -f 'source[path]=/'`; дождаться сборки Pages и проверить сайт в браузере.
+Обновление: сервер — `python text_corrector/backend/scripts/deploy_space.py`; страница — `bash text_corrector/frontend/scripts/build_pages.sh ~/Desktop/Projects/turan-demo`, затем commit + push в turan-demo.
