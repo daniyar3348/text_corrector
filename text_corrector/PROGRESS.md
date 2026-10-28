@@ -11,10 +11,12 @@
 - На сайте ссылка «Модель на Hugging Face» в блоке «Результаты модели»
 
 ## In Progress
-- Пересборка Space без весов внутри; проверка примера кода из описания модели
+- (нет)
 
 ## Remaining
-- Залить обновлённый `space/README.md` в Space, пересобрать страницу и запушить turan-demo, коммит + push ветки (PR #1 обновится), CHANGELOG
+- Слить PR #1 в main
+- Хостинг ps.kz не отключать, пока DNS-зона correctecor.kz в его Plesk: сначала перенести зону в «Управление DNS» консоли ps.kz
+- Продлить домен correctecor.kz до 15.10.2027 (автопродление выключено); подписка HF PRO нужна для Docker Space
 
 ## Changed Files
 - см. CHANGELOG.md

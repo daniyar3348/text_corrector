@@ -27,7 +27,7 @@
 - `backend/scripts/deploy_space.py` — `ALLOWED_ORIGINS` с доменом; переменная в Space обновлена
 - `backend/space/README.md` — ссылка на https://correctecor.kz (залито в Space)
 
-**Notes:** До переключения на домене была только заглушка ps.kz «Домен припаркован» с недействительным сертификатом Plesk; хостинг в Plesk пустой, почтовых ящиков нет. Проверено: Google, Cloudflare, Quad9 и Яндекс DNS уже отдают адреса GitHub; https://correctecor.kz → 200, http → 301 на https, www и daniyar3348.github.io/turan-demo/ → 301 на https://correctecor.kz/, `/visualization` открывается через 404.html, CORS для https://correctecor.kz. У старых записей был TTL 86400, поэтому провайдерские и локальные кэши могут показывать заглушку ps.kz до 24 часов. Хостинг ps.kz (тариф M, 19 530 ₸/год) и SSL на ps.kz сайту больше не нужны.
+**Notes:** До переключения на домене была только заглушка ps.kz «Домен припаркован» с недействительным сертификатом Plesk; хостинг в Plesk пустой, почтовых ящиков нет. Проверено: Google, Cloudflare, Quad9 и Яндекс DNS уже отдают адреса GitHub; https://correctecor.kz → 200, http → 301 на https, www и daniyar3348.github.io/turan-demo/ → 301 на https://correctecor.kz/, `/visualization` открывается через 404.html, CORS для https://correctecor.kz. У старых записей был TTL 86400, поэтому провайдерские и локальные кэши могут показывать заглушку ps.kz до 24 часов. Сайт хостингу ps.kz больше не нужен, но DNS-зона домена живёт в Plesk этого хостинга (тариф M, 19 530 ₸/год): если хостинг отключить, зона пропадёт и домен перестанет работать — сначала перенести зону в «Управление DNS» консоли ps.kz.
 
 ---
 ## 2026-10-28 12:55
