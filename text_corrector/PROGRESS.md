@@ -1,25 +1,23 @@
 # Progress
 
-**Last updated:** 2026-10-28 13:15
+**Last updated:** 2026-10-28 13:35
 
 ## Current Task
-Выложить сайт Turan в интернет: сервер с моделью в Docker Space на Hugging Face, страница на GitHub Pages.
+Вынести обученную модель в отдельный репозиторий на Hugging Face; Space берёт её оттуда, сайт по-прежнему шлёт текст в Space и показывает исправленный текст.
 
 ## Completed Steps
-- Space `daniyar51/turan-text-corrector` (публичный, Docker, cpu-basic): https://daniyar51-turan-text-corrector.hf.space
-- Репозиторий `daniyar3348/turan-demo` (публичный) + GitHub Pages на своём домене: https://correctecor.kz (DNS в Plesk на ps.kz, HTTPS обязателен)
-- Сайт проверен вживую (десктоп и 375 px), keep-awake Action проходит
-- Коммиты text_corrector в ветке `claude/bold-greider-0de332`: 730f2eb, d4867fe, ba0e5c2, bfc65cb + правка кнопок и этот файл
+- Репозиторий модели `daniyar51/kazroberta-kazakh-spelling-detector` (публичный): веса, токенизатор, `kk_lexicon.tsv`, описание модели; ревизия d0459c3
+- `backend/model_card/README.md`, `backend/scripts/publish_model.py`; `backend/space/Dockerfile` скачивает модель по зафиксированной ревизии; `deploy_space.py` заливает только код (из Space удалены веса и словарь)
+- На сайте ссылка «Модель на Hugging Face» в блоке «Результаты модели»
 
 ## In Progress
-- (нет)
+- Пересборка Space без весов внутри; проверка примера кода из описания модели
 
 ## Remaining
-- Запушить ветку `claude/bold-greider-0de332` в daniyar3348/text_corrector (описание Space и README демо ссылаются на `deploy_space.py` и `build_pages.sh`) — по решению пользователя
-- Решить, нужен ли хостинг ps.kz (тариф M, 19 530 ₸/год) и SSL на ps.kz — сайту они больше не нужны
+- Залить обновлённый `space/README.md` в Space, пересобрать страницу и запушить turan-demo, коммит + push ветки (PR #1 обновится), CHANGELOG
 
 ## Changed Files
 - см. CHANGELOG.md
 
 ## Resume From
-Обновление: сервер — `python text_corrector/backend/scripts/deploy_space.py`; страница — `bash text_corrector/frontend/scripts/build_pages.sh ~/Desktop/Projects/turan-demo`, затем commit + push в turan-demo.
+Когда Space в RUNNING и `/health` = TransformerModel: `python text_corrector/backend/scripts/deploy_space.py` (README), `bash text_corrector/frontend/scripts/build_pages.sh ~/Desktop/Projects/turan-demo`, commit + push в turan-demo и в ветку.

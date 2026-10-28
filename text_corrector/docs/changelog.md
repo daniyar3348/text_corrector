@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-28 13:40
+
+**Task:** Обученная модель вынесена в отдельный репозиторий на Hugging Face; Space берёт её оттуда
+
+**Changed files:**
+- `backend/model_card/README.md` (новый) — описание модели для Hugging Face: архитектура, данные, параметры обучения (из `training_args.bin` и `meta.json`), метрики, ограничения, пример кода
+- `backend/scripts/publish_model.py` (новый) — заливка весов, токенизатора, `kk_lexicon.tsv` и описания в `daniyar51/kazroberta-kazakh-spelling-detector`, печатает ревизию
+- `backend/space/Dockerfile` (новый) — образ Space: модель и словарь скачиваются при сборке из репозитория модели по зафиксированной ревизии `d0459c3`
+- `backend/scripts/deploy_space.py` — заливает только код (`space/Dockerfile`, `app/`, зависимости, README), всё остальное в Space удаляет
+- `backend/space/README.md` — ссылка на модель
+- `frontend/src/components/ModelResults.tsx` — ссылка «Модель на Hugging Face»
+- `~/Desktop/Projects/turan-demo` — README (модель в таблице «Как устроено», порядок обновления), пересобранная страница (560b99b, de9b041)
+
+**Notes:** Репозиторий модели публичный (как и Space), `pipeline_tag: token-classification`, 7 файлов. Из Space удалены веса и словарь (5 файлов), он собрался заново со скачиванием модели: `/health` → TransformerModel, «Бул маселе оте манызды болып тур.» → «Бұл мәселе өте маңызды болып тұр.» (~90 мс). Путь запроса не изменился: поле ввода на correctecor.kz → `/correct-text` в Space → детектор + корректор → исправленный текст на странице. `Dockerfile.serve` для локального запуска по-прежнему копирует локальные файлы модели.
+
+---
 ## 2026-10-28 13:15
 
 **Task:** Сайт демо переведён на свой домен correctecor.kz (ps.kz)

@@ -7,6 +7,9 @@
  */
 import React from 'react'
 
+// Published by backend/scripts/publish_model.py; the API server loads it from here
+const MODEL_URL = 'https://huggingface.co/daniyar51/kazroberta-kazakh-spelling-detector'
+
 interface Stat {
   value: string
   label: string
@@ -44,7 +47,15 @@ export const ModelResults: React.FC = () => (
       <h2 className="text-sm font-bold text-gray-800">Результаты модели</h2>
       <p className="text-xs text-gray-500 mt-1 leading-relaxed">
         KazRoBERTa (6 слоёв, ~83 млн параметров), дообучена на 2,57 млн пар предложений
-        с синтетическими ошибками. Тест — 8 000 предложений, которых не было в обучении.
+        с синтетическими ошибками. Тест — 8 000 предложений, которых не было в обучении.{' '}
+        <a
+          href={MODEL_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-primary-700 hover:underline"
+        >
+          Модель на Hugging Face ↗
+        </a>
       </p>
     </div>
 

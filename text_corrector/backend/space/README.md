@@ -21,5 +21,8 @@ https://correctecor.kz
 
 Русский текст распознаётся, но не исправляется.
 
+Модель (детектор + словарь корректора): https://huggingface.co/daniyar51/kazroberta-kazakh-spelling-detector —
+Space скачивает её при сборке, версия зафиксирована в `Dockerfile` (`MODEL_REVISION`).
+
 Код: https://github.com/daniyar3348/text_corrector — Space собирается из `backend/`
-скриптом `backend/scripts/deploy_space.py` (Dockerfile = `backend/Dockerfile.serve`).
+скриптом `backend/scripts/deploy_space.py` (Dockerfile = `backend/space/Dockerfile`).
