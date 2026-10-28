@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-28 13:15
+
+**Task:** Сайт демо переведён на свой домен correctecor.kz (ps.kz)
+
+**Changed files:**
+- DNS `correctecor.kz` в Plesk (srv-plesk62.ps.kz, хостинг ps.kz): A корня 194.39.65.24 → 185.199.108–111.153 (GitHub Pages), AAAA 2a00:5da0:1000::166 → 2606:50c0:8000–8003::153, `www` CNAME correctecor.kz → daniyar3348.github.io. Почтовые записи (MX, mail, webmail, SPF, DKIM, SRV) не тронуты
+- `daniyar3348/turan-demo` — custom domain correctecor.kz, сертификат Let's Encrypt (корень + www), HTTPS обязателен; сборка под корень домена, файл `CNAME` (2320aae)
+- `frontend/scripts/build_pages.sh` — `DOMAIN` (по умолчанию correctecor.kz, пишет CNAME), `BASE=/` по умолчанию
+- `backend/scripts/deploy_space.py` — `ALLOWED_ORIGINS` с доменом; переменная в Space обновлена
+- `backend/space/README.md` — ссылка на https://correctecor.kz (залито в Space)
+
+**Notes:** До переключения на домене была только заглушка ps.kz «Домен припаркован» с недействительным сертификатом Plesk; хостинг в Plesk пустой, почтовых ящиков нет. Проверено: Google, Cloudflare, Quad9 и Яндекс DNS уже отдают адреса GitHub; https://correctecor.kz → 200, http → 301 на https, www и daniyar3348.github.io/turan-demo/ → 301 на https://correctecor.kz/, `/visualization` открывается через 404.html, CORS для https://correctecor.kz. У старых записей был TTL 86400, поэтому провайдерские и локальные кэши могут показывать заглушку ps.kz до 24 часов. Хостинг ps.kz (тариф M, 19 530 ₸/год) и SSL на ps.kz сайту больше не нужны.
+
+---
 ## 2026-10-28 12:55
 
 **Task:** Публикация демо завершена: отдельный публичный репозиторий `daniyar3348/turan-demo` с GitHub Pages
