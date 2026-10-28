@@ -56,8 +56,9 @@ COPY app/ ./app/
 # 3) trained model artifact (largest, changes least)
 COPY models/kazakh_detector/ ./models/kazakh_detector/
 
-# Non-root; re-own copied files so appuser can read them.
-RUN useradd --no-create-home --shell /bin/false appuser && \
+# Non-root; re-own copied files so appuser can read them. UID 1000 is the user
+# Hugging Face Spaces runs containers as (scripts/deploy_space.py).
+RUN useradd --uid 1000 --no-create-home --shell /bin/false appuser && \
     chown -R appuser:appuser /app
 USER appuser
 

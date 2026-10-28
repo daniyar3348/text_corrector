@@ -6,8 +6,8 @@ const steps = [
     id: 1,
     icon: '📥',
     title: 'Входной текст',
-    description: 'Пользователь вводит текст на русском или казахском языке.',
-    detail: 'До 5 000 символов. Поддерживаются смешанные тексты.',
+    description: 'Пользователь вводит казахский текст или загружает файл (.txt, .docx, .pdf…).',
+    detail: 'До 5 000 символов, файлы до 5 МБ. Текст делится на предложения, разметка сохраняется.',
     color: 'from-blue-500 to-blue-600',
     bg: 'bg-blue-50',
     border: 'border-blue-200',
@@ -17,8 +17,8 @@ const steps = [
     id: 2,
     icon: '🔍',
     title: 'Определение языка',
-    description: 'Анализ символов и лексических паттернов для автоопределения языка.',
-    detail: 'Казахские символы: Ә Ғ Қ Ң Ө Ұ Ү Һ І. Уверенность возвращается в процентах.',
+    description: 'Анализ символов и частых слов. Исправляется только казахский текст.',
+    detail: 'Казахские символы: Ә Ғ Қ Ң Ө Ұ Ү Һ І. Русский текст возвращается без изменений с пометкой.',
     color: 'from-violet-500 to-violet-600',
     bg: 'bg-violet-50',
     border: 'border-violet-200',
@@ -26,10 +26,10 @@ const steps = [
   },
   {
     id: 3,
-    icon: '✂️',
-    title: 'Токенизация',
-    description: 'Текст разбивается на слова с сохранением пунктуации и пробелов.',
-    detail: 'Каждый токен обрабатывается независимо. Служебные символы не изменяются.',
+    icon: '🧠',
+    title: 'Поиск ошибок: KazRoBERTa',
+    description: 'Нейросеть читает предложение целиком и помечает каждое слово: KEEP или ERROR.',
+    detail: 'Метка берётся по первому подтокену слова. Модель дообучена на 2,57 млн пар предложений.',
     color: 'from-amber-500 to-amber-600',
     bg: 'bg-amber-50',
     border: 'border-amber-200',
@@ -37,10 +37,10 @@ const steps = [
   },
   {
     id: 4,
-    icon: '📖',
-    title: 'Поиск в словаре',
-    description: 'Каждое слово сверяется со встроенным словарём языка.',
-    detail: 'Если слово найдено — оно остаётся без изменений. Иначе запускается поиск кандидатов.',
+    icon: '🔤',
+    title: 'Казахские буквы',
+    description: 'Для помеченного слова перебираются замены русских букв на казахские и пары гармонии гласных.',
+    detail: 'а→ә, о→ө, у→ұ/ү, к→қ, г→ғ, н→ң, и→і, ы↔і… Остаются только формы из словаря (~174 тыс. словоформ).',
     color: 'from-green-500 to-green-600',
     bg: 'bg-green-50',
     border: 'border-green-200',
@@ -49,9 +49,9 @@ const steps = [
   {
     id: 5,
     icon: '📐',
-    title: 'Расстояние Левенштейна',
-    description: 'Для неизвестных слов алгоритм находит ближайшие словарные кандидаты.',
-    detail: 'Максимальное редакционное расстояние — 3. Порог схожести — 55%. Используется rapidfuzz.',
+    title: 'Ближайшее слово',
+    description: 'Если замены букв не помогли, ищется ближайшее слово из словаря.',
+    detail: 'Расстояние OSA (перестановка соседних букв = 1 правка), rapidfuzz. При равенстве выбирается самое частое слово.',
     color: 'from-rose-500 to-rose-600',
     bg: 'bg-rose-50',
     border: 'border-rose-200',
@@ -73,9 +73,10 @@ const steps = [
 const architecture = [
   { layer: 'Frontend', tech: 'React 18 + TypeScript + Vite', role: 'UI, ввод текста, отображение результатов' },
   { layer: 'API Layer', tech: 'FastAPI + Pydantic v2', role: 'REST-эндпоинты, валидация, CORS' },
-  { layer: 'Detection', tech: 'Символьный анализ + эвристики', role: 'Определение языка по символам' },
-  { layer: 'Correction', tech: 'rapidfuzz + словарь', role: 'Редактирование и поиск кандидатов' },
-  { layer: 'Model slot', tech: 'HuggingFace / ONNX ready', role: 'Подключение обученной модели' },
+  { layer: 'Language', tech: 'Символьный анализ + частые слова', role: 'Определение языка' },
+  { layer: 'Detection', tech: 'KazRoBERTa · PyTorch (CPU)', role: 'Поиск слов с ошибками' },
+  { layer: 'Correction', tech: 'Словарь + rapidfuzz (OSA)', role: 'Выбор исправления для помеченных слов' },
+  { layer: 'Serving', tech: 'Docker · Hugging Face Spaces', role: 'Сервер с моделью' },
 ]
 
 export default function ModelVisualization() {
@@ -184,9 +185,11 @@ export default function ModelVisualization() {
         <section>
           <h2 className="text-lg font-bold text-gray-800 mb-2">Архитектура модели: KazRoBERTa</h2>
           <p className="text-sm text-gray-500 mb-4">
-            KazRoBERTa — трансформер на базе RoBERTa, предобученный для казахского языка:
-            RoBERTa-base · 12 слоёв энкодера · скрытая размерность 768 · 12 голов внимания ·
-            ~125 млн параметров. Колесо мыши — масштаб, перетаскивание — перемещение.
+            KazRoBERTa — трансформер RoBERTa, предобученный на казахских текстах
+            (kz-transformers/kaz-roberta-conversational) и дообученный здесь искать ошибки:
+            6 слоёв энкодера · скрытая размерность 768 · 12 голов внимания · ~83 млн параметров ·
+            на выходе метка KEEP или ERROR для каждого слова. Колесо мыши — масштаб,
+            перетаскивание — перемещение.
           </p>
           <div className="rounded-2xl overflow-hidden shadow-sm">
             <NeuralNetDiagram />
@@ -195,9 +198,9 @@ export default function ModelVisualization() {
             {[
               { color: 'bg-blue-400', label: 'Вход и токенизация' },
               { color: 'bg-cyan-500', label: 'Эмбеддинги' },
-              { color: 'bg-indigo-500', label: 'Encoder × 12' },
+              { color: 'bg-indigo-500', label: 'Encoder × 6' },
               { color: 'bg-violet-500', label: 'Self-Attention' },
-              { color: 'bg-green-500', label: 'MLM-голова и выход' },
+              { color: 'bg-green-500', label: 'Классификатор и выход' },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-1.5 text-xs text-gray-600">
                 <span className={`w-3 h-3 rounded-full ${item.color}`} />

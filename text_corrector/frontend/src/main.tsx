@@ -7,7 +7,8 @@ import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* BASE_URL is the sub-path the site is served from (e.g. GitHub Pages) */}
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/visualization" element={<ModelVisualization />} />

@@ -17,8 +17,9 @@ import {
 import '@xyflow/react/dist/style.css'
 
 // ── Detailed architecture diagram for KazRoBERTa ───────────────────────────
-// KazRoBERTa — a RoBERTa-base transformer pretrained for Kazakh:
-// 12 encoder layers · hidden size 768 · 12 attention heads · ~125M params.
+// KazRoBERTa (kz-transformers/kaz-roberta-conversational), fine-tuned as a
+// token classifier: 6 encoder layers · hidden size 768 · 12 attention heads ·
+// ~83M params · KEEP / ERROR label per word (models/kazakh_detector/config.json).
 
 type NodeData = { label: string; sub?: string }
 
@@ -153,7 +154,7 @@ const initialNodes: Node[] = [
     id: 'enc-group',
     type: 'group',
     position: { x: 290, y: 395 },
-    data: { label: 'Encoder Layer  × 12', tone: '#6366f1' },
+    data: { label: 'Encoder Layer  × 6', tone: '#6366f1' },
     style: { width: 290, height: 395 },
     ...groupDefaults,
   },
@@ -169,7 +170,7 @@ const initialNodes: Node[] = [
     id: 'head-group',
     type: 'group',
     position: { x: 286, y: 884 },
-    data: { label: 'MLM Head', tone: '#22c55e' },
+    data: { label: 'Token Classification Head', tone: '#22c55e' },
     style: { width: 304, height: 360 },
     ...groupDefaults,
   },
@@ -179,7 +180,7 @@ const initialNodes: Node[] = [
     id: 'input',
     type: 'input',
     position: { x: 346, y: 0 },
-    data: { label: '📥 Входной текст', sub: 'русский / казахский · до 5000 симв.' },
+    data: { label: '📥 Входной текст', sub: 'одно казахское предложение за проход' },
     zIndex: 5,
   },
   {
@@ -213,7 +214,7 @@ const initialNodes: Node[] = [
     zIndex: 5,
   },
 
-  // ── Encoder layer (internals unrolled, repeated × 12) ──
+  // ── Encoder layer (internals unrolled, repeated × 6) ──
   {
     id: 'mha',
     type: 'encoder',
@@ -275,33 +276,33 @@ const initialNodes: Node[] = [
     zIndex: 5,
   },
 
-  // ── MLM head ──
+  // ── Token classification head ──
   {
-    id: 'mlm-dense',
+    id: 'cls-dropout',
     type: 'head',
     position: { x: 322, y: 906 },
-    data: { label: 'Dense 768 → 768 + GELU' },
+    data: { label: 'Dropout', sub: 'p = 0.1' },
     zIndex: 5,
   },
   {
-    id: 'mlm-norm',
+    id: 'cls-linear',
     type: 'head',
     position: { x: 322, y: 994 },
-    data: { label: 'LayerNorm' },
+    data: { label: 'Linear 768 → 2', sub: 'для каждого токена' },
     zIndex: 5,
   },
   {
-    id: 'mlm-decoder',
+    id: 'cls-softmax',
     type: 'head',
     position: { x: 322, y: 1082 },
-    data: { label: 'Decoder Linear 768 → ≈ 52k', sub: 'веса связаны с Token Embeddings' },
+    data: { label: '📊 Softmax', sub: 'P(KEEP), P(ERROR)' },
     zIndex: 5,
   },
   {
-    id: 'mlm-softmax',
+    id: 'cls-word',
     type: 'head',
     position: { x: 322, y: 1170 },
-    data: { label: '📊 Softmax', sub: 'вероятности по словарю' },
+    data: { label: 'Метка слова', sub: 'по первому подтокену · argmax' },
     zIndex: 5,
   },
 
@@ -310,7 +311,7 @@ const initialNodes: Node[] = [
     id: 'output',
     type: 'output',
     position: { x: 322, y: 1276 },
-    data: { label: 'Предсказанный токен', sub: 'argmax → исправленное слово' },
+    data: { label: '🏷️ KEEP / ERROR', sub: 'ERROR → слово исправляет корректор' },
     zIndex: 5,
   },
 ]
@@ -347,7 +348,7 @@ const initialEdges: Edge[] = [
     target: 'seq-out',
     style: E.indigo,
     animated: true,
-    label: '× 12 слоёв',
+    label: '× 6 слоёв',
     labelStyle,
     labelBgStyle,
   },
@@ -367,12 +368,12 @@ const initialEdges: Edge[] = [
   { id: 'e12', source: 'qkv', target: 'sdpa', style: E.violet },
   { id: 'e13', source: 'sdpa', target: 'concat-heads', style: E.violet },
 
-  // MLM head
-  { id: 'e14', source: 'seq-out', target: 'mlm-dense', style: E.green, animated: true },
-  { id: 'e15', source: 'mlm-dense', target: 'mlm-norm', style: E.green },
-  { id: 'e16', source: 'mlm-norm', target: 'mlm-decoder', style: E.green },
-  { id: 'e17', source: 'mlm-decoder', target: 'mlm-softmax', style: E.green },
-  { id: 'e18', source: 'mlm-softmax', target: 'output', style: E.green, animated: true },
+  // Token classification head
+  { id: 'e14', source: 'seq-out', target: 'cls-dropout', style: E.green, animated: true },
+  { id: 'e15', source: 'cls-dropout', target: 'cls-linear', style: E.green },
+  { id: 'e16', source: 'cls-linear', target: 'cls-softmax', style: E.green },
+  { id: 'e17', source: 'cls-softmax', target: 'cls-word', style: E.green },
+  { id: 'e18', source: 'cls-word', target: 'output', style: E.green, animated: true },
 ]
 
 // ── Component ────────────────────────────────────────────────────────────────

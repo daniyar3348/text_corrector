@@ -7,17 +7,28 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { DemoExamples } from '@/components/DemoExamples'
 import { FileUploadButton } from '@/components/FileUploadButton'
 import { FileCorrectionResult } from '@/components/FileCorrectionResult'
+import { ModelResults } from '@/components/ModelResults'
 import { useLanguageDetection } from '@/hooks/useLanguageDetection'
 import { useTextCorrection } from '@/hooks/useTextCorrection'
 import { useFileCorrection } from '@/hooks/useFileCorrection'
+import { useServerStatus, type ServerStatus } from '@/hooks/useServerStatus'
 
 const MAX_CHARS = 5000
+
+const SERVER_BADGE: Record<ServerStatus, { label: string; className: string; dot: string }> = {
+  connecting:  { label: 'Подключение…',         className: 'bg-gray-50 border-gray-200 text-gray-600',   dot: 'bg-gray-400' },
+  waking:      { label: 'Сервер просыпается…',  className: 'bg-amber-50 border-amber-200 text-amber-700', dot: 'bg-amber-500' },
+  ready:       { label: 'Модель загружена',     className: 'bg-green-50 border-green-200 text-green-700', dot: 'bg-green-500' },
+  unavailable: { label: 'Сервер недоступен',    className: 'bg-red-50 border-red-200 text-red-700',       dot: 'bg-red-500' },
+}
 
 export default function App() {
   const [inputText, setInputText] = useState('')
   const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const serverStatus = useServerStatus()
+  const badge = SERVER_BADGE[serverStatus]
   const { language, confidence, loading: langLoading } = useLanguageDetection(inputText)
   const { result, status, error, correct, reset } = useTextCorrection()
   const {
@@ -133,10 +144,10 @@ export default function App() {
             >
               🔬 Визуализация модели
             </Link>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-                             bg-green-50 border border-green-200 text-green-700 text-xs font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Система активна
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full
+                              border text-xs font-medium ${badge.className}`}>
+              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${badge.dot}`} />
+              {badge.label}
             </span>
           </div>
         </div>
@@ -313,6 +324,18 @@ export default function App() {
           {/* Right column: results */}
           <div className="lg:col-span-2 space-y-6">
 
+            {/* Server is waking up */}
+            {serverStatus === 'waking' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3
+                              text-sm text-amber-800 animate-fade-in">
+                <p className="font-semibold">Сервер просыпается</p>
+                <p className="text-xs mt-1 leading-relaxed">
+                  Когда сайтом долго не пользуются, сервер засыпает. Запуск и загрузка
+                  модели занимают около минуты — дождитесь зелёного статуса вверху.
+                </p>
+              </div>
+            )}
+
             {/* Status message */}
             <StatusMessage status={status} error={error} />
 
@@ -386,17 +409,17 @@ export default function App() {
                     {
                       step: '1',
                       title: 'Определение языка',
-                      body: 'Казахские символы (Ә Ғ Қ Ң Ө Ұ Ү Һ І) и лексические паттерны автоматически определяют язык.',
+                      body: 'По казахским буквам (Ә Ғ Қ Ң Ө Ұ Ү Һ І) и частым словам. Исправляется только казахский текст.',
                     },
                     {
                       step: '2',
-                      title: 'Поиск кандидатов',
-                      body: 'Для каждого неизвестного слова находится ближайшее слово в словаре по расстоянию Левенштейна.',
+                      title: 'Поиск ошибок',
+                      body: 'Нейросеть KazRoBERTa читает предложение целиком и помечает слова с ошибками.',
                     },
                     {
                       step: '3',
-                      title: 'Вывод исправлений',
-                      body: 'Возвращается исправленный текст с метаданными по каждому исправлению и визуальным diff.',
+                      title: 'Исправление',
+                      body: 'Для помеченного слова перебираются замены на казахские буквы, затем ближайшие слова из словаря; выбирается самое частое.',
                     },
                   ].map(({ step, title, body }) => (
                     <li key={step} className="flex gap-3">
@@ -416,6 +439,9 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* ── Model evaluation results ───────────────────────────────────── */}
+        <ModelResults />
 
       </main>
 

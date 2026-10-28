@@ -14,16 +14,26 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
+// Generous: the hosted server shares a small CPU, and a 5000-character text is
+// tens of model passes (one per sentence).
 const client = axios.create({
   baseURL: BASE_URL,
-  timeout: 15_000,
+  timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+const SERVER_DOWN_MESSAGE =
+  'Сервер недоступен или ещё просыпается — попробуйте через минуту.'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function extractErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
+    // No answer at all, or the hosting proxy answering for a sleeping server
+    const status = error.response?.status
+    if (!error.response || status === 502 || status === 503 || status === 504) {
+      return SERVER_DOWN_MESSAGE
+    }
     const detail = error.response?.data?.detail
     if (typeof detail === 'string') return detail
     if (Array.isArray(detail)) {
@@ -100,7 +110,7 @@ export async function correctFile(
 
 export async function checkHealth(): Promise<HealthResponse> {
   try {
-    const { data } = await client.get<HealthResponse>('/health')
+    const { data } = await client.get<HealthResponse>('/health', { timeout: 10_000 })
     return data
   } catch (error) {
     throw new Error(extractErrorMessage(error))
