@@ -1,0 +1,40 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# SERVING requirements (CPU inference): KazRoBERTa detector + Kazakh corrector.
+# Used ONLY by Dockerfile.serve. torch MUST come from the PyTorch CPU index —
+# the Dockerfile passes `--extra-index-url https://download.pytorch.org/whl/cpu`.
+# torch is pinned with the `+cpu` local version, which exists ONLY on that index,
+# so pip can never resolve the multi-GB CUDA wheel from PyPI.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.29.0,<1.0.0
+python-multipart>=0.0.9
+
+# ── Validation / config ───────────────────────────────────────────────────────
+pydantic>=2.6.0,<3.0.0
+pydantic-settings>=2.2.0,<3.0.0
+python-dotenv>=1.0.1
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+aiofiles>=23.2.1
+
+# ── Document parsing (/correct-file) ──────────────────────────────────────────
+# Without these the endpoint still serves .txt/.md/.csv but rejects .docx/.pdf
+# with 415 — the image would silently lose half the upload feature.
+python-docx>=1.1.0
+pypdf>=4.0.0
+
+# ── Kazakh corrector (rapidfuzz OSA + process) ───────────────────────────────
+rapidfuzz>=3.6.0,<4.0.0
+
+# ── Inference stack — pinned to what the model was trained/saved with ─────────
+#   config.json -> transformers_version 5.12.1 ; training env -> torch 2.12.1.
+#   RoBERTa uses byte-level BPE (tokenizer.json / RobertaTokenizerFast), so NO
+#   sentencepiece is needed. safetensors reads model.safetensors.
+torch==2.12.1+cpu
+transformers==5.12.1
+safetensors>=0.4.3
+# Pin numpy so resolution is deterministic regardless of which index (PyPI vs
+# the torch CPU index) serves it under --extra-index-url.
+numpy<2.5

@@ -1,7 +1,9 @@
 # Turan Text Corrector
 
-Automatic spelling correction platform for **Russian** and **Kazakh** text,
-built as a research and pilot-implementation prototype for educational institutions.
+Automatic spelling correction platform for **Kazakh** text (KazRoBERTa error
+detector + lexicon/rule corrector), built as a research and pilot-implementation
+prototype for educational institutions. Russian text is recognised but returned
+unchanged — there is no Russian corrector.
 
 ---
 
@@ -9,8 +11,9 @@ built as a research and pilot-implementation prototype for educational instituti
 
 | Feature | Status |
 |---|---|
-| Russian spell correction | ✅ |
 | Kazakh spell correction | ✅ |
+| Russian spell correction | ❌ detected, passed through unchanged (response says so) |
+| Kazakh morphological analysis (stem + suffix parsing) | ✅ |
 | Automatic language detection | ✅ |
 | Confidence scoring | ✅ |
 | Diff highlighting (original vs corrected) | ✅ |
@@ -28,7 +31,7 @@ text_corrector/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/          # FastAPI route handlers
-│   │   │   ├── correction.py    # POST /correct-text
+│   │   │   ├── correction.py    # POST /correct-text, /correct-file
 │   │   │   ├── detection.py     # POST /detect-language
 │   │   │   └── health.py        # GET  /health
 │   │   ├── core/
@@ -110,27 +113,73 @@ npm run dev                        # starts at http://localhost:5173
 
 ### `POST /correct-text`
 
-Detect the language and return a corrected version of the text.
+Detect the language and return a corrected version of the text. Like
+`/correct-file`, the text is corrected one sentence per model pass, so line
+breaks are kept and long input is checked to the end. `corrections[]` has one
+item per changed word; `position` is its offset in `original_text`.
 
 **Request:**
 ```json
-{ "text": "прмвет мр" }
+{ "text": "Бул маселе оте манызды." }
 ```
 
 **Response:**
 ```json
 {
-  "original_text": "прмвет мр",
-  "corrected_text": "привет мр",
-  "detected_language": "Russian",
-  "confidence": 0.7,
+  "original_text": "Бул маселе оте манызды.",
+  "corrected_text": "Бұл мәселе өте маңызды.",
+  "detected_language": "Kazakh",
+  "confidence": 0.99,
   "corrections": [
-    { "before": "прмвет", "after": "привет", "type": "spelling" }
+    { "before": "Бул",      "after": "Бұл",      "type": "spelling", "position": 0 },
+    { "before": "маселе",   "after": "мәселе",   "type": "spelling", "position": 4 },
+    { "before": "оте",      "after": "өте",      "type": "spelling", "position": 11 },
+    { "before": "манызды.", "after": "маңызды.", "type": "spelling", "position": 15 }
   ],
-  "processing_time_ms": 12.4,
-  "status": "success"
+  "processing_time_ms": 8.8,
+  "status": "success",
+  "message": null
 }
 ```
+
+Text detected as anything other than Kazakh (`Russian`, `Mixed`, `Unknown`) is
+returned unchanged with `message`: *«Исправляется только казахский текст…»*.
+
+---
+
+### `POST /correct-file`
+
+Upload a document and correct **all** of its text. `multipart/form-data`, field
+name `file`; accepts `.txt`, `.md`, `.csv`, `.tsv`, `.log`, `.docx`, `.pdf` up
+to `MAX_FILE_SIZE_MB` (5 MB).
+
+The document is corrected one sentence per model pass and its layout —
+newlines, indentation, blank lines — is returned untouched.
+
+**Request:**
+```bash
+curl -F "file=@document.docx" http://127.0.0.1:8010/correct-file
+```
+
+**Response:** same fields as `/correct-text`, plus
+```json
+{
+  "filename": "document.docx",
+  "file_type": "docx",
+  "corrections_total": 336,
+  "total_words": 485,
+  "corrected_words": 336,
+  "chunks": 95
+}
+```
+`corrections[]` is capped at `MAX_FILE_CORRECTIONS` (1000) — `corrections_total`
+reports the real count, and `corrected_text` always contains every fix.
+
+| Status | Meaning |
+|---|---|
+| `413` | file exceeds `MAX_FILE_SIZE_MB` |
+| `415` | unsupported extension (`.doc`, `.exe`, …) |
+| `422` | empty file, or no text layer (scanned PDF) |
 
 ---
 
@@ -248,6 +297,29 @@ The detection algorithm is layered:
 | 4 | Cyrillic character coverage (Russian fallback) | 40% |
 
 Output labels: `Russian` · `Kazakh` · `Mixed` · `Unknown`
+
+---
+
+## Kazakh Morphology — How It Works
+
+Kazakh is agglutinative: a stem takes an ordered chain of suffixes
+(`STEM + NUMBER + POSSESSIVE + CASE`). A finite dictionary cannot list every
+inflected form, so the corrector integrates a **morphological analyzer**
+(`backend/app/services/morphology/`) into the Kazakh pipeline:
+
+1. **Analysis** — an out-of-vocabulary word is segmented back into stem +
+   grammemes using the allomorph inventories in `suffixes.py`, with
+   **vowel-harmony** validation (`phonology.py`) and recovery of stem-final
+   consonant alternations (қ↔ғ, к↔г, п↔б).
+2. **Decision** — if the word parses to a *known stem* with a harmony-consistent
+   suffix chain (e.g. `мектептердің` → `мектеп`-PL-GEN), it is a valid form and
+   is left untouched.
+3. **Correction** — only words that are neither in the vocabulary nor
+   analyzable fall through to dictionary + edit-distance correction.
+
+This is the unified ML / morphology mechanism targeted by project stage 4: the
+morphological analyzer and the correction model cooperate so that genuine
+inflection is preserved while real misspellings are fixed.
 
 ---
 

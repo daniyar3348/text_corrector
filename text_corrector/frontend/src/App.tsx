@@ -5,34 +5,90 @@ import { CorrectionResult } from '@/components/CorrectionResult'
 import { StatusMessage } from '@/components/StatusMessage'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { DemoExamples } from '@/components/DemoExamples'
+import { FileUploadButton } from '@/components/FileUploadButton'
+import { FileCorrectionResult } from '@/components/FileCorrectionResult'
+import { ModelResults } from '@/components/ModelResults'
 import { useLanguageDetection } from '@/hooks/useLanguageDetection'
 import { useTextCorrection } from '@/hooks/useTextCorrection'
+import { useFileCorrection } from '@/hooks/useFileCorrection'
+import { useServerStatus, type ServerStatus } from '@/hooks/useServerStatus'
 
 const MAX_CHARS = 5000
 
+const SERVER_BADGE: Record<ServerStatus, { label: string; className: string; dot: string }> = {
+  connecting:  { label: 'Подключение…',         className: 'bg-gray-50 border-gray-200 text-gray-600',   dot: 'bg-gray-400' },
+  waking:      { label: 'Сервер просыпается…',  className: 'bg-amber-50 border-amber-200 text-amber-700', dot: 'bg-amber-500' },
+  ready:       { label: 'Модель загружена',     className: 'bg-green-50 border-green-200 text-green-700', dot: 'bg-green-500' },
+  unavailable: { label: 'Сервер недоступен',    className: 'bg-red-50 border-red-200 text-red-700',       dot: 'bg-red-500' },
+}
+
 export default function App() {
   const [inputText, setInputText] = useState('')
+  const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const serverStatus = useServerStatus()
+  const badge = SERVER_BADGE[serverStatus]
   const { language, confidence, loading: langLoading } = useLanguageDetection(inputText)
   const { result, status, error, correct, reset } = useTextCorrection()
+  const {
+    result: fileResult,
+    status: fileStatus,
+    error: fileError,
+    filename,
+    upload: uploadFile,
+    reset: resetFile,
+  } = useFileCorrection()
 
   const charCount = inputText.length
   const isOverLimit = charCount > MAX_CHARS
-  const isLoading = status === 'loading'
+  const fileLoading = fileStatus === 'loading'
+  const isLoading = status === 'loading' || fileLoading
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
   const handleCorrect = useCallback(async () => {
     if (!inputText.trim() || isOverLimit || isLoading) return
+    resetFile()
     await correct(inputText)
-  }, [inputText, isOverLimit, isLoading, correct])
+  }, [inputText, isOverLimit, isLoading, correct, resetFile])
 
   const handleClear = useCallback(() => {
     setInputText('')
     reset()
+    resetFile()
     textareaRef.current?.focus()
-  }, [reset])
+  }, [reset, resetFile])
+
+  // A file and a pasted snippet are two different jobs — starting one clears
+  // the other's result so the right column never shows a stale answer.
+  const handleFileSelect = useCallback(
+    async (file: File) => {
+      reset()
+      await uploadFile(file)
+    },
+    [reset, uploadFile],
+  )
+
+  const handleInsertIntoEditor = useCallback(
+    (text: string) => {
+      setInputText(text)
+      resetFile()
+      textareaRef.current?.focus()
+    },
+    [resetFile],
+  )
+
+  // Dropping a file onto the textarea does the same as the upload button
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragging(false)
+      const file = e.dataTransfer.files?.[0]
+      if (file) handleFileSelect(file)
+    },
+    [handleFileSelect],
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -88,10 +144,10 @@ export default function App() {
             >
               🔬 Визуализация модели
             </Link>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-                             bg-green-50 border border-green-200 text-green-700 text-xs font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Система активна
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full
+                              border text-xs font-medium ${badge.className}`}>
+              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${badge.dot}`} />
+              {badge.label}
             </span>
           </div>
         </div>
@@ -114,9 +170,12 @@ export default function App() {
             Автоматическое исправление текста
             <br />
             <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Русский и Казахский
+              Казахский язык
             </span>
           </h1>
+          <p className="text-sm text-gray-500">
+            Русский текст распознаётся, но не исправляется.
+          </p>
 
         </section>
 
@@ -147,17 +206,31 @@ export default function App() {
               </div>
 
               {/* Textarea */}
-              <div className="p-4">
+              <div
+                className="p-4 relative"
+                onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
+              >
+                {dragging && (
+                  <div className="absolute inset-4 z-10 rounded-xl border-2 border-dashed
+                                  border-primary-400 bg-primary-50/90 backdrop-blur-[1px]
+                                  flex items-center justify-center pointer-events-none">
+                    <span className="text-sm font-semibold text-primary-700">
+                      📄 Отпустите файл, чтобы исправить его
+                    </span>
+                  </div>
+                )}
                 <textarea
                   ref={textareaRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
-                    'Введите русский или казахский текст здесь…\n\nПримеры:\n' +
-                    '  прмвет        → привет\n' +
-                    '  здраствуйте  → здравствуйте\n' +
-                    '  сәем          → сәлем'
+                    'Введите казахский текст здесь…\n\nПримеры:\n' +
+                    '  Салем                → Сәлем\n' +
+                    '  Бул маселе манызды  → Бұл мәселе маңызды\n' +
+                    '  кітп оқиды           → кітап оқиды'
                   }
                   rows={9}
                   spellCheck={false}
@@ -181,7 +254,7 @@ export default function App() {
               </div>
 
               {/* Action bar */}
-              <div className="flex items-center gap-3 px-4 pb-4">
+              <div className="flex flex-wrap items-center gap-3 px-4 pb-4">
                 <button
                   onClick={handleCorrect}
                   disabled={isLoading || !inputText.trim() || isOverLimit}
@@ -201,6 +274,12 @@ export default function App() {
                     : <span className="text-base leading-none">✨</span>}
                   {isLoading ? 'Исправление…' : 'Исправить текст'}
                 </button>
+
+                <FileUploadButton
+                  onSelect={handleFileSelect}
+                  disabled={isLoading}
+                  busy={fileLoading}
+                />
 
                 <button
                   onClick={handleClear}
@@ -245,11 +324,65 @@ export default function App() {
           {/* Right column: results */}
           <div className="lg:col-span-2 space-y-6">
 
+            {/* Server is waking up */}
+            {serverStatus === 'waking' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3
+                              text-sm text-amber-800 animate-fade-in">
+                <p className="font-semibold">Сервер просыпается</p>
+                <p className="text-xs mt-1 leading-relaxed">
+                  Когда сайтом долго не пользуются, сервер засыпает. Запуск и загрузка
+                  модели занимают около минуты — дождитесь зелёного статуса вверху.
+                </p>
+              </div>
+            )}
+
             {/* Status message */}
             <StatusMessage status={status} error={error} />
 
+            {/* File: in progress */}
+            {fileLoading && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm
+                              p-5 flex items-center gap-3">
+                <LoadingSpinner size="sm" label="" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-700 truncate">
+                    {filename}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Читаем файл и исправляем текст целиком…
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* File: failed */}
+            {fileStatus === 'error' && fileError && (
+              <div className="bg-red-50 rounded-2xl border border-red-200 p-4
+                              flex items-start gap-2.5">
+                <span className="text-lg leading-none">⚠</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-700 truncate">
+                    {filename}
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5">{fileError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* File: result */}
+            {fileStatus === 'success' && fileResult && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm
+                              p-5 animate-slide-up">
+                <FileCorrectionResult
+                  result={fileResult}
+                  onInsert={handleInsertIntoEditor}
+                  insertLimit={MAX_CHARS}
+                />
+              </div>
+            )}
+
             {/* Idle state placeholder */}
-            {status === 'idle' && (
+            {status === 'idle' && fileStatus === 'idle' && (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200
                               p-8 flex flex-col items-center justify-center text-center
                               min-h-[200px] space-y-3">
@@ -268,7 +401,7 @@ export default function App() {
             )}
 
             {/* How it works — only shown in idle */}
-            {status === 'idle' && (
+            {status === 'idle' && fileStatus === 'idle' && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
                 <h3 className="text-sm font-bold text-gray-800">Как это работает</h3>
                 <ol className="space-y-3">
@@ -276,17 +409,17 @@ export default function App() {
                     {
                       step: '1',
                       title: 'Определение языка',
-                      body: 'Казахские символы (Ә Ғ Қ Ң Ө Ұ Ү Һ І) и лексические паттерны автоматически определяют язык.',
+                      body: 'По казахским буквам (Ә Ғ Қ Ң Ө Ұ Ү Һ І) и частым словам. Исправляется только казахский текст.',
                     },
                     {
                       step: '2',
-                      title: 'Поиск кандидатов',
-                      body: 'Для каждого неизвестного слова находится ближайшее слово в словаре по расстоянию Левенштейна.',
+                      title: 'Поиск ошибок',
+                      body: 'Нейросеть KazRoBERTa читает предложение целиком и помечает слова с ошибками.',
                     },
                     {
                       step: '3',
-                      title: 'Вывод исправлений',
-                      body: 'Возвращается исправленный текст с метаданными по каждому исправлению и визуальным diff.',
+                      title: 'Исправление',
+                      body: 'Для помеченного слова перебираются замены на казахские буквы, затем ближайшие слова из словаря; выбирается самое частое.',
                     },
                   ].map(({ step, title, body }) => (
                     <li key={step} className="flex gap-3">
@@ -306,6 +439,9 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* ── Model evaluation results ───────────────────────────────────── */}
+        <ModelResults />
 
       </main>
 

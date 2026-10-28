@@ -14,13 +14,12 @@ client = TestClient(app)
 # ── Unit tests for correction services ───────────────────────────────────────
 
 class TestCorrectRussian:
-    def test_typo_privet(self):
-        """The classic demonstration: прмвет → привет."""
+    def test_russian_is_noop(self):
+        """Russian path is intentionally a no-op (no trained RU model; the demo
+        dictionary corrupted valid Russian). Text passes through unchanged."""
         corrected, corrections = correct_russian("прмвет")
-        assert corrected == "привет"
-        assert len(corrections) == 1
-        assert corrections[0]["before"] == "прмвет"
-        assert corrections[0]["after"] == "привет"
+        assert corrected == "прмвет"
+        assert corrections == []
 
     def test_no_change_for_valid_word(self):
         corrected, corrections = correct_russian("привет")
@@ -41,11 +40,12 @@ class TestCorrectRussian:
         # Should return capitalised correction
         assert corrected[0].isupper()
 
-    def test_multi_word_correction(self):
+    def test_multi_word_noop(self):
         text = "прмвет мр"
         corrected, corrections = correct_russian(text)
-        # At least one correction expected
-        assert len(corrections) >= 1
+        # Russian is a no-op: nothing changed
+        assert corrected == text
+        assert corrections == []
 
 
 class TestCorrectKazakh:
@@ -57,8 +57,9 @@ class TestCorrectKazakh:
 
 class TestCorrectTextDispatch:
     def test_routes_to_russian(self):
+        # Russian routing still works, but the Russian path is now a no-op.
         corrected, _ = correct_text("прмвет", "Russian")
-        assert corrected == "привет"
+        assert corrected == "прмвет"
 
     def test_unknown_language_passthrough(self):
         original = "xyz123"
@@ -70,12 +71,13 @@ class TestCorrectTextDispatch:
 # ── Integration tests via HTTP client ────────────────────────────────────────
 
 class TestCorrectTextEndpoint:
-    def test_correct_privet_typo(self):
+    def test_correct_russian_passthrough(self):
+        # Russian is a no-op: text returned unchanged, still detected Russian.
         response = client.post("/correct-text", json={"text": "прмвет"})
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert data["corrected_text"] == "привет"
+        assert data["corrected_text"] == "прмвет"
         assert data["detected_language"] == "Russian"
         assert isinstance(data["corrections"], list)
         assert isinstance(data["processing_time_ms"], float)
@@ -105,6 +107,31 @@ class TestCorrectTextEndpoint:
         response = client.post("/correct-text", json={"text": "привет"})
         data = response.json()
         assert 0.0 <= data["confidence"] <= 1.0
+
+    def test_russian_is_reported_as_unchecked(self):
+        """No Russian corrector: the response must not imply the text is correct."""
+        data = client.post("/correct-text", json={"text": "прмвет мр"}).json()
+        assert data["corrected_text"] == "прмвет мр"
+        assert "только казахский" in data["message"]
+
+    def test_kazakh_has_no_unchecked_note(self):
+        data = client.post("/correct-text", json={"text": "Сәлем Қазақстан"}).json()
+        assert data["detected_language"] == "Kazakh"
+        assert data["message"] is None
+
+    def test_line_breaks_are_preserved(self):
+        """Pasted text is corrected sentence by sentence, keeping its layout."""
+        text = "Бірінші жол.\n\n    Екінші жол."
+        data = client.post("/correct-text", json={"text": text}).json()
+        assert data["corrected_text"].count("\n") == 2
+        assert "\n\n    " in data["corrected_text"]
+
+    def test_corrections_are_per_word(self):
+        """One item per changed word with its offset — not the whole text."""
+        data = client.post("/correct-text", json={"text": "кітп оқиды"}).json()
+        assert data["corrected_text"] == "кітап оқиды"
+        assert [(c["before"], c["after"], c["position"])
+                for c in data["corrections"]] == [("кітп", "кітап", 0)]
 
 
 class TestDetectLanguageEndpoint:

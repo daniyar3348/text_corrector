@@ -4,7 +4,6 @@ All modules import `logger` from here so the format is consistent.
 """
 import logging
 import sys
-from datetime import datetime, timezone
 
 from .config import settings
 

@@ -21,175 +21,20 @@ Replacing with a trained model
 Set RUSSIAN_MODEL_PATH / KAZAKH_MODEL_PATH in .env.
 `correction_pipeline.py` will call `TransformerModel.correct()` instead
 of calling these functions, so nothing here needs to change.
+
+NOTE (fallback path): in production the Kazakh path uses the trained KazRoBERTa
+detector + `kazakh_corrector.py`. This dictionary/edit-distance service runs only
+as the PlaceholderModel fallback (no trained model / no torch) and in tests.
 """
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from rapidfuzz import process as rfprocess
-from rapidfuzz import fuzz
 
 from app.core.config import settings
-from app.core.logging_config import logger
+from app.services.morphology import is_analyzable
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# RUSSIAN VOCABULARY
-# ═══════════════════════════════════════════════════════════════════════════════
-RUSSIAN_VOCABULARY: Set[str] = {
-    # ── Greetings / phrases ──────────────────────────────────────────────────
-    "привет", "здравствуйте", "здравствуй", "добрый", "добро",
-    "пожалуйста", "спасибо", "прощай", "до", "свидания", "пока", "удачи",
-    "добрый", "утро", "день", "вечер",
-    # ── Pronouns ─────────────────────────────────────────────────────────────
-    "я", "ты", "он", "она", "оно", "мы", "вы", "они",
-    "меня", "тебя", "его", "её", "нас", "вас", "их",
-    "мне", "тебе", "ему", "ей", "нам", "вам", "им",
-    "себя", "себе", "собой",
-    "этот", "эта", "это", "эти", "тот", "та", "те",
-    "свой", "своя", "своё", "свои",
-    "весь", "вся", "всё", "все",
-    "каждый", "каждая", "каждое", "каждые",
-    "другой", "другая", "другое", "другие",
-    "такой", "такая", "такое", "такие",
-    "какой", "какая", "какое", "какие",
-    "кто", "что", "где", "когда", "почему", "зачем", "как", "куда", "откуда",
-    "сколько",
-    # ── Prepositions / conjunctions / particles ───────────────────────────────
-    "в", "на", "и", "не", "с", "к", "за", "из", "по", "то", "от",
-    "для", "до", "при", "про", "под", "над", "без", "через", "после",
-    "перед", "между", "против", "вдоль", "около", "среди", "кроме",
-    "но", "да", "нет", "или", "если", "то", "же", "ли",
-    "так", "уже", "ещё", "очень", "тоже", "только", "даже", "вот",
-    "вдруг", "здесь", "там", "тут", "вместе",
-    # ── To be / auxiliaries ───────────────────────────────────────────────────
-    "есть", "был", "была", "было", "были",
-    "буду", "будешь", "будет", "будем", "будете", "будут",
-    "бы", "бывает", "бывало",
-    # ── Common verbs ──────────────────────────────────────────────────────────
-    "делать", "делаю", "делаешь", "делает", "делаем", "делаете", "делают",
-    "сделать", "сделал", "сделала", "сделали",
-    "помочь", "помощь", "помогать", "помогаю", "помогаешь", "помогает",
-    "помогаем", "помогаете", "помогают", "помог", "помогла", "помогли",
-    "учиться", "учится", "учатся", "учился", "училась", "учились",
-    "работу", "работе", "работой", "школу", "школе", "школой",
-    "говорить", "говорю", "говоришь", "говорит", "говорим", "говорите", "говорят",
-    "сказать", "сказал", "сказала", "сказали", "скажи", "скажу",
-    "знать", "знаю", "знаешь", "знает", "знаем", "знаете", "знают",
-    "видеть", "вижу", "видишь", "видит", "видим", "видите", "видят",
-    "идти", "иду", "идёшь", "идёт", "идём", "идёте", "идут",
-    "пойти", "пойду", "пойдёшь", "пойдёт", "пойдём", "пойдут",
-    "хотеть", "хочу", "хочешь", "хочет", "хотим", "хотите", "хотят",
-    "мочь", "могу", "можешь", "может", "можем", "можете", "могут",
-    "давать", "даю", "даёшь", "даёт", "даём", "даёте", "дают",
-    "дать", "дал", "дала", "дали",
-    "брать", "беру", "берёшь", "берёт", "берём", "берёте", "берут",
-    "взять", "взял", "взяла", "взяли",
-    "читать", "читаю", "читаешь", "читает", "читаем", "читаете", "читают",
-    "писать", "пишу", "пишешь", "пишет", "пишем", "пишете", "пишут",
-    "слушать", "слушаю", "слушает", "слушаем",
-    "смотреть", "смотрю", "смотришь", "смотрит", "смотрим", "смотрят",
-    "думать", "думаю", "думаешь", "думает", "думаем", "думают",
-    "понимать", "понимаю", "понимаешь", "понимает", "понимают",
-    "работать", "работаю", "работаешь", "работает", "работаем", "работают",
-    "учиться", "учусь", "учишься", "учится", "учимся", "учатся",
-    "жить", "живу", "живёшь", "живёт", "живём", "живут",
-    "любить", "люблю", "любишь", "любит", "любим", "любят",
-    "помочь", "помогать", "помогаю", "помогает",
-    "найти", "искать", "ищу", "ищет",
-    "купить", "продать", "открыть", "закрыть",
-    "начать", "начинать", "кончить", "заканчивать",
-    "спать", "сплю", "спишь", "спит",
-    "есть", "ем", "ешь", "ест", "едим", "едят",
-    "пить", "пью", "пьёшь", "пьёт", "пьём", "пьют",
-    "знать", "уметь", "умею", "умеет",
-    "верить", "надеяться", "отдыхать",
-    "нравиться", "нравится", "нравлюсь",
-    "считать", "считаю", "считает",
-    "ждать", "жду", "ждёшь", "ждёт", "ждём",
-    "играть", "играю", "играет", "играем",
-    "бежать", "бегу", "бежишь", "бежит", "бегут",
-    # ── Modal / impersonal ────────────────────────────────────────────────────
-    "можно", "нельзя", "нужно", "надо", "необходимо", "следует",
-    # ── Common nouns ──────────────────────────────────────────────────────────
-    "человек", "люди", "мир", "время", "рука", "руки",
-    "глаз", "глаза", "жизнь", "дело", "дела", "место", "места",
-    "лицо", "страна", "страны", "слово", "слова",
-    "работа", "дом", "дома", "путь", "город", "города",
-    "голова", "сторона", "система", "год", "годы", "месяц", "месяцы",
-    "неделя", "недели", "час", "часы", "часа", "минута", "минуты",
-    "секунда", "секунды", "вода", "еда",
-    # ── Education ─────────────────────────────────────────────────────────────
-    "школа", "школы", "школу", "школе",
-    "учитель", "учителя", "учителю", "учителем",
-    "ученик", "ученики", "ученику",
-    "студент", "студенты", "студенту",
-    "университет", "университете",
-    "урок", "уроки", "уроку", "уроке",
-    "класс", "классы", "класса",
-    "задание", "задания", "заданию",
-    "книга", "книги", "книгу", "книге",
-    "тетрадь", "тетради", "ручка", "ручки",
-    "карандаш", "карандаши",
-    "стол", "столы", "стул", "стулья", "доска", "мел",
-    "знание", "знания", "образование", "обучение",
-    "учёба", "учебник", "учебники",
-    "экзамен", "оценка", "оценки", "задача", "задачи",
-    # ── Technology ────────────────────────────────────────────────────────────
-    "компьютер", "компьютеры", "телефон", "телефоны",
-    "интернет", "программа", "программы", "приложение", "приложения",
-    "сайт", "сайты", "текст", "тексты", "слово", "слова",
-    "предложение", "предложения", "язык", "языки",
-    "русский", "казахский", "система", "информация",
-    "данные", "анализ", "исправление", "ошибка", "ошибки",
-    "модель", "обучение", "алгоритм",
-    # ── Body ──────────────────────────────────────────────────────────────────
-    "голова", "глаза", "нос", "рот", "ухо", "уши",
-    "нога", "ноги", "сердце", "спина", "живот",
-    # ── Family ────────────────────────────────────────────────────────────────
-    "мама", "папа", "брат", "сестра", "бабушка", "дедушка",
-    "ребёнок", "дети", "семья", "муж", "жена", "сын", "дочь",
-    # ── Nature ────────────────────────────────────────────────────────────────
-    "солнце", "луна", "звезда", "небо", "земля", "море",
-    "река", "гора", "лес", "поле", "цветок", "дерево",
-    # ── Food ──────────────────────────────────────────────────────────────────
-    "хлеб", "молоко", "мясо", "рыба", "овощи", "фрукты", "чай", "кофе", "суп",
-    # ── Adjectives ────────────────────────────────────────────────────────────
-    "большой", "большая", "большое", "большие",
-    "маленький", "маленькая", "маленькое", "маленькие",
-    "новый", "новая", "новое", "новые",
-    "старый", "старая", "старое", "старые",
-    "хороший", "хорошая", "хорошее", "хорошие",
-    "плохой", "плохая", "плохое", "плохие",
-    "красивый", "красивая", "красивое", "красивые",
-    "умный", "умная", "умное", "умные",
-    "добрый", "добрая", "доброе", "добрые",
-    "злой", "злая", "злое", "злые",
-    "белый", "белая", "белое", "белые",
-    "чёрный", "чёрная", "чёрное", "чёрные",
-    "красный", "красная", "красное", "красные",
-    "зелёный", "зелёная", "зелёное", "зелёные",
-    "синий", "синяя", "синее", "синие",
-    "жёлтый", "жёлтая", "жёлтое", "жёлтые",
-    "первый", "первая", "первое", "первые",
-    "последний", "последняя", "последнее", "последние",
-    "важный", "важная", "важное", "важные",
-    "нужный", "нужная", "нужное", "нужные",
-    "правильный", "правильная", "правильное", "правильные",
-    # ── Numbers ───────────────────────────────────────────────────────────────
-    "один", "одна", "одно", "два", "две", "три", "четыре", "пять",
-    "шесть", "семь", "восемь", "девять", "десять",
-    "двадцать", "тридцать", "сорок", "пятьдесят",
-    "сто", "двести", "тысяча", "миллион",
-    # ── Temporal / adverbs ────────────────────────────────────────────────────
-    "сейчас", "теперь", "всегда", "никогда", "иногда", "часто", "редко",
-    "завтра", "вчера", "сегодня", "утром", "днём", "вечером", "ночью",
-    "рано", "поздно", "быстро", "медленно", "хорошо", "плохо",
-    "правильно", "неправильно", "точно", "примерно",
-    "много", "мало", "немного", "совсем", "совсем",
-    "здесь", "там", "тут", "рядом", "далеко", "близко",
-    "вместе", "отдельно", "снова", "опять",
-}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # KAZAKH VOCABULARY
@@ -284,8 +129,13 @@ KAZAKH_VOCABULARY: Set[str] = {
 }
 
 # ── Pre-compute sorted vocabulary lists for rapidfuzz ─────────────────────────
-_RU_VOCAB_LIST: List[str] = sorted(RUSSIAN_VOCABULARY)
 _KZ_VOCAB_LIST: List[str] = sorted(KAZAKH_VOCABULARY)
+
+# ── Kazakh stem lexicon for the morphological analyzer ────────────────────────
+# Every vocabulary entry may act as a stem. The analyzer uses this set to decide
+# whether an out-of-vocabulary word is a legitimate inflected form (stem + valid
+# suffix chain) and therefore must NOT be "corrected" away.
+_KZ_STEMS: Set[str] = {w.lower() for w in KAZAKH_VOCABULARY}
 
 # ── Tokenisation regex ────────────────────────────────────────────────────────
 # Splits text into (cyrillic-word, non-word) runs preserving everything.
@@ -355,13 +205,24 @@ def _correct_tokens(
     vocab: List[str],
     threshold: float,
     max_edit: int,
+    accept_word: Optional[Callable[[str], bool]] = None,
 ) -> Tuple[str, List[Dict]]:
     """
     Correct each word-token against *vocab*.
+
+    Parameters
+    ----------
+    accept_word :
+        Optional predicate. When a token is absent from *vocab* but
+        ``accept_word(token)`` returns True, the token is treated as valid and
+        left unchanged. This is how the Kazakh morphological analyzer protects
+        legitimate inflected forms (stem + suffix chain) from being "corrected".
+
     Returns (corrected_text, list_of_correction_dicts).
     """
     corrections: List[Dict] = []
     result_parts: List[str] = []
+    vocab_set: Set[str] = set(vocab)
 
     for token in tokens:
         # Non-word token (spaces, punctuation) – pass through unchanged
@@ -372,7 +233,12 @@ def _correct_tokens(
         word_lower = token.lower()
 
         # Already in vocabulary – keep original casing
-        if word_lower in set(vocab):
+        if word_lower in vocab_set:
+            result_parts.append(token)
+            continue
+
+        # Morphologically valid inflected form – keep as is
+        if accept_word is not None and accept_word(word_lower):
             result_parts.append(token)
             continue
 
@@ -404,21 +270,37 @@ def _correct_tokens(
 
 def correct_russian(text: str) -> Tuple[str, List[Dict]]:
     """
-    Apply Russian dictionary + edit-distance correction to *text*.
-    Returns (corrected_text, corrections_list).
+    Russian path is intentionally a NO-OP (pass-through).
+
+    There is no trained Russian model; the small demo dictionary + edit-distance
+    corrupts valid Russian (e.g. погода→города, улице→лицо) and even mis-fixes
+    real typos, doing more harm than good. Until a real Russian corrector exists,
+    leave Russian text unchanged.
     """
-    tokens = _TOKEN_RE.findall(text)
-    return _correct_tokens(
-        tokens,
-        _RU_VOCAB_LIST,
-        settings.CORRECTION_SIMILARITY_THRESHOLD,
-        settings.MAX_EDIT_DISTANCE,
-    )
+    return text, []
+
+
+def _kazakh_morph_accept(word: str) -> bool:
+    """
+    True if *word* is a valid Kazakh inflected form of a known stem.
+
+    Bridges the morphological analyzer into the correction pipeline so that
+    legitimate stem + suffix combinations (which the finite vocabulary cannot
+    enumerate) are recognised and left untouched.
+    """
+    return is_analyzable(word, _KZ_STEMS)
 
 
 def correct_kazakh(text: str) -> Tuple[str, List[Dict]]:
     """
-    Apply Kazakh dictionary + edit-distance correction to *text*.
+    Apply Kazakh correction to *text*.
+
+    The pipeline now combines two components into a single mechanism:
+      1. morphological analysis — recognises valid inflected forms and protects
+         them from spurious correction;
+      2. dictionary + edit-distance — fixes genuine misspellings of the
+         remaining out-of-vocabulary words.
+
     Returns (corrected_text, corrections_list).
     """
     tokens = _TOKEN_RE.findall(text)
@@ -427,6 +309,7 @@ def correct_kazakh(text: str) -> Tuple[str, List[Dict]]:
         _KZ_VOCAB_LIST,
         settings.CORRECTION_SIMILARITY_THRESHOLD,
         settings.MAX_EDIT_DISTANCE,
+        accept_word=_kazakh_morph_accept,
     )
 
 

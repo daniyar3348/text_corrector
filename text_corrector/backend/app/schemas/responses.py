@@ -32,6 +32,24 @@ class CorrectionResponse(BaseModel):
     message: Optional[str] = None
 
 
+class FileCorrectionResponse(BaseModel):
+    """Result of correcting a whole uploaded document."""
+    filename: str
+    file_type: str                # "txt" | "docx" | "pdf" | …
+    original_text: str
+    corrected_text: str
+    detected_language: str
+    confidence: float
+    corrections: List[CorrectionItem]
+    corrections_total: int        # may exceed len(corrections) — list is capped
+    total_words: int
+    corrected_words: int
+    chunks: int                   # model passes used for this document
+    processing_time_ms: float
+    status: str
+    message: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     service_status: str           # "ok" | "degraded" | "error"
     model_status: str             # "loaded" | "placeholder" | "error"

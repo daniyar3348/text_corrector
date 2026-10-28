@@ -13,6 +13,15 @@ const LANG_BADGE: Record<string, { bg: string; text: string; emoji: string }> = 
   Unknown: { bg: 'bg-gray-100', text: 'text-gray-600', emoji: '❓' },
 }
 
+/** 1 исправление · 2 исправления · 5 исправлений */
+function pluralCorrections(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'исправление'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'исправления'
+  return 'исправлений'
+}
+
 export const CorrectionResult: React.FC<CorrectionResultProps> = ({ result }) => {
   const [copied, setCopied] = useState(false)
   const [showDiff, setShowDiff] = useState(true)
@@ -20,6 +29,11 @@ export const CorrectionResult: React.FC<CorrectionResultProps> = ({ result }) =>
   const hasCorrections = result.corrections.length > 0
   const noChange = result.original_text === result.corrected_text
   const lang = LANG_BADGE[result.detected_language] ?? LANG_BADGE['Unknown']
+  // Only Kazakh is corrected; anything else comes back unchecked, so "no
+  // changes" must not be presented as "the text is correct".
+  const unchecked = result.detected_language !== 'Kazakh'
+  const notice = result.message
+    ?? (unchecked ? 'Исправляется только казахский текст — этот текст не проверялся.' : null)
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(result.corrected_text)
@@ -57,7 +71,8 @@ export const CorrectionResult: React.FC<CorrectionResultProps> = ({ result }) =>
             <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-2">
               Исправленный текст
             </p>
-            <p className="font-mono text-base leading-relaxed text-gray-800 break-words">
+            <p className="font-mono text-base leading-relaxed text-gray-800 break-words
+                          whitespace-pre-wrap">
               {result.corrected_text}
             </p>
           </div>
@@ -74,8 +89,16 @@ export const CorrectionResult: React.FC<CorrectionResultProps> = ({ result }) =>
         </div>
       </div>
 
+      {/* ── Server note (unchecked language, truncation…) ────────────────── */}
+      {notice && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200
+                      rounded-lg px-3 py-2">
+          ⚠ {notice}
+        </p>
+      )}
+
       {/* ── No-change message ────────────────────────────────────────────── */}
-      {noChange && (
+      {noChange && !unchecked && (
         <div className="flex items-center gap-2.5 rounded-xl bg-green-50 border
                         border-green-200 px-4 py-3 text-sm text-green-700">
           <span className="text-lg">✅</span>
@@ -87,7 +110,7 @@ export const CorrectionResult: React.FC<CorrectionResultProps> = ({ result }) =>
       {hasCorrections && (
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            {result.corrections.length} {result.corrections.length === 1 ? 'исправление' : 'исправления'}
+            {result.corrections.length} {pluralCorrections(result.corrections.length)}
           </p>
           <div className="flex flex-wrap gap-2">
             {result.corrections.map((c, i) => (

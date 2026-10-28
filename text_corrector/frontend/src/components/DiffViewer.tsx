@@ -35,7 +35,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ original, corrected }) =
         <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2">
           Оригинал
         </p>
-        <p className="font-mono text-sm leading-relaxed break-words text-gray-700">
+        <p className="font-mono text-sm leading-relaxed break-words whitespace-pre-wrap text-gray-700">
           {diff.map((op, i) =>
             op.type === 'same' ? (
               <span key={i}>{op.original}</span>
@@ -55,7 +55,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ original, corrected }) =
         <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mb-2">
           Исправлено
         </p>
-        <p className="font-mono text-sm leading-relaxed break-words text-gray-700">
+        <p className="font-mono text-sm leading-relaxed break-words whitespace-pre-wrap text-gray-700">
           {diff.map((op, i) =>
             op.type === 'same' ? (
               <span key={i}>{op.corrected}</span>

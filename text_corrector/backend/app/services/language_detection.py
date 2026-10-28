@@ -10,8 +10,8 @@ Detection strategy (layered):
 This module is self-contained; it can be replaced with a trained classifier
 by implementing the same `detect_language()` function contract.
 """
+import os
 import re
-import unicodedata
 from typing import Dict, Set, Union
 
 # ── Kazakh-exclusive characters (absent from standard Russian) ──────────────
@@ -73,6 +73,27 @@ KAZAKH_SIGNAL_WORDS: Set[str] = {
 _CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]", re.UNICODE)
 _WORD_RE = re.compile(r"[\u0400-\u04FF]+", re.UNICODE)  # any Cyrillic run
 
+# \u2500\u2500 Kazakh lexicon, "russified" (special letters \u2192 Russian look-alikes) \u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# A token is a strong Kazakh signal if it matches a real Kazakh word AFTER
+# mapping \u04D9\u2192\u0430, \u04E9\u2192\u043E, \u04B1/\u04AF\u2192\u0443, \u049B\u2192\u043A, \u0493\u2192\u0433, \u04A3\u2192\u043D, \u0456\u2192\u0438, \u04BB\u2192\u0445. This recognises Kazakh that
+# has NO Kazakh-exclusive letters AND ka2ru-corrupted Kazakh (whose surface
+# looks Russian) \u2014 the case that otherwise misroutes to the Russian pipeline.
+_KA2RU_MAP = str.maketrans({"\u04D9": "\u0430", "\u04E9": "\u043E", "\u04B1": "\u0443", "\u04AF": "\u0443",
+                            "\u049B": "\u043A", "\u0493": "\u0433", "\u04A3": "\u043D", "\u0456": "\u0438", "\u04BB": "\u0445"})
+_KAZ_RUSSIFIED: Set[str] = set()
+_LEX_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "kk_lexicon.tsv",
+)
+try:
+    with open(_LEX_PATH, encoding="utf-8") as _f:
+        for _ln in _f:
+            _w, _, _c = _ln.rstrip("\n").partition("\t")
+            if _c and len(_w) >= 3 and int(_c) >= 3:
+                _KAZ_RUSSIFIED.add(_w.translate(_KA2RU_MAP))
+except Exception:  # lexicon is optional \u2014 detection still works without it
+    pass
+
 
 def _tokenize(text: str) -> list[str]:
     """Return lowercase Cyrillic tokens."""
@@ -121,13 +142,35 @@ def detect_language(text: str) -> Dict[str, Union[str, float]]:
     rus_token_ratio = rus_token_hits / total_tokens
     kaz_token_ratio = kaz_token_hits / total_tokens
 
+    # ── Signal 2b: Kazakh lexicon coverage (special-letter-insensitive) ──────
+    # Fraction of (non-Russian-stopword) tokens matching a real Kazakh word after
+    # russify-mapping. Catches Kazakh with no special letters AND ka2ru-corrupted
+    # Kazakh. Excluding Russian signal words avoids inflating coverage on Russian.
+    kaz_lex_hits = sum(1 for t in tokens
+                       if t in _KAZ_RUSSIFIED and t not in RUSSIAN_SIGNAL_WORDS)
+    kaz_lex_ratio = kaz_lex_hits / total_tokens
+    # Coverage signal scales with length:
+    #  - sentences (>=3 tokens): high coverage (Kazakh ~0.8-1.0) vs random Russian
+    #    collisions (~0.2-0.3) — nonlinear ramp above 0.5;
+    #  - short input (1-2 tokens, e.g. "Салем"->"Сәлем"): accept Kazakh only if
+    #    EVERY token is a russified-Kazakh word (kaz_lex_hits already excludes
+    #    Russian stopwords), so a lone Kazakh word is caught while "привет мир"
+    #    (only 1 of 2 matches) stays Russian.
+    if total_tokens >= 3:
+        kaz_lex_signal = max(0.0, kaz_lex_ratio - 0.5) / 0.5
+    else:
+        kaz_lex_signal = 1.0 if (kaz_lex_hits > 0 and kaz_lex_hits == total_tokens) else 0.0
+
     # ── Signal 3: Cyrillic coverage (Russian fallback) ───────────────────────
     cyrillic_ratio = _cyrillic_ratio(text)
 
     # ── Aggregate scores ──────────────────────────────────────────────────────
-    # Kazakh exclusive chars are a very strong signal
-    kaz_score = kaz_char_ratio * 0.65 + kaz_token_ratio * 0.35
-    rus_score = rus_token_ratio * 0.60 + (cyrillic_ratio * 0.40 if kaz_char_count == 0 else 0.0)
+    kaz_score = kaz_char_ratio * 0.6 + kaz_lex_signal * 0.7 + kaz_token_ratio * 0.1
+    # Russian fallback unless there's substantial Kazakh-lexicon coverage (else
+    # ka2ru-corrupted Kazakh — high coverage, no special chars — leaks to Russian).
+    rus_score = rus_token_ratio * 0.60 + (
+        cyrillic_ratio * 0.40 if (kaz_char_count == 0 and kaz_lex_signal <= 0.0) else 0.0
+    )
 
     # ── Decision ──────────────────────────────────────────────────────────────
     BOTH_THRESHOLD = 0.15   # both languages have notable presence → Mixed

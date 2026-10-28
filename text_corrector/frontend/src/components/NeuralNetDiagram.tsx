@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, type CSSProperties } from 'react'
 import {
   ReactFlow,
   Background,
@@ -7,313 +7,373 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  Handle,
+  Position,
+  BackgroundVariant,
   type Connection,
   type Node,
   type Edge,
-  Position,
-  BackgroundVariant,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-// ── Custom node styles ─────────────────────────────────────────────────────
+// ── Detailed architecture diagram for KazRoBERTa ───────────────────────────
+// KazRoBERTa (kz-transformers/kaz-roberta-conversational), fine-tuned as a
+// token classifier: 6 encoder layers · hidden size 768 · 12 attention heads ·
+// ~83M params · KEEP / ERROR label per word (models/kazakh_detector/config.json).
 
-const nodeBase: React.CSSProperties = {
-  padding: '10px 16px',
+type NodeData = { label: string; sub?: string }
+
+const handleStyle: CSSProperties = { opacity: 0, width: 7, height: 7, border: 'none' }
+
+function Handles() {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} id="r" style={handleStyle} />
+      <Handle type="target" position={Position.Left} id="l" style={handleStyle} />
+    </>
+  )
+}
+
+const nodeBase: CSSProperties = {
+  padding: '9px 14px',
   borderRadius: 12,
   fontSize: 12,
   fontWeight: 600,
   textAlign: 'center',
-  minWidth: 160,
+  minWidth: 168,
   border: '2px solid',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-  lineHeight: 1.4,
+  boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+  lineHeight: 1.35,
 }
 
-function InputNode({ data }: { data: { label: string; sub?: string } }) {
-  return (
-    <div style={{ ...nodeBase, background: '#eff6ff', borderColor: '#3b82f6', color: '#1d4ed8' }}>
-      <div>{data.label}</div>
-      {data.sub && <div style={{ fontSize: 10, fontWeight: 400, color: '#60a5fa', marginTop: 2 }}>{data.sub}</div>}
-    </div>
-  )
+function makeNode(bg: string, border: string, color: string, subColor: string) {
+  return function NodeComp({ data }: { data: NodeData }) {
+    return (
+      <div style={{ ...nodeBase, background: bg, borderColor: border, color }}>
+        <Handles />
+        <div>{data.label}</div>
+        {data.sub && (
+          <div style={{ fontSize: 10, fontWeight: 400, color: subColor, marginTop: 2 }}>
+            {data.sub}
+          </div>
+        )}
+      </div>
+    )
+  }
 }
 
-function BertNode({ data }: { data: { label: string; sub?: string } }) {
-  return (
-    <div style={{ ...nodeBase, background: '#f5f3ff', borderColor: '#8b5cf6', color: '#5b21b6' }}>
-      <div>{data.label}</div>
-      {data.sub && <div style={{ fontSize: 10, fontWeight: 400, color: '#a78bfa', marginTop: 2 }}>{data.sub}</div>}
-    </div>
-  )
-}
+const InputNode = makeNode('#eff6ff', '#3b82f6', '#1d4ed8', '#60a5fa')
+const EmbedNode = makeNode('#ecfeff', '#06b6d4', '#0e7490', '#22d3ee')
+const EncoderNode = makeNode('#eef2ff', '#6366f1', '#4338ca', '#818cf8')
+const AttnNode = makeNode('#f5f3ff', '#8b5cf6', '#5b21b6', '#a78bfa')
+const HeadNode = makeNode('#f0fdf4', '#22c55e', '#15803d', '#4ade80')
+const OutputNode = makeNode('#ecfdf5', '#10b981', '#065f46', '#34d399')
 
-function LstmNode({ data }: { data: { label: string; sub?: string } }) {
+function GroupNode({ data }: { data: { label?: string; tone?: string; ghost?: boolean } }) {
+  const tone = data.tone ?? '#6366f1'
   return (
-    <div style={{ ...nodeBase, background: '#fff7ed', borderColor: '#f97316', color: '#c2410c' }}>
-      <div>{data.label}</div>
-      {data.sub && <div style={{ fontSize: 10, fontWeight: 400, color: '#fb923c', marginTop: 2 }}>{data.sub}</div>}
-    </div>
-  )
-}
-
-function FusionNode({ data }: { data: { label: string; sub?: string } }) {
-  return (
-    <div style={{ ...nodeBase, background: '#f0fdf4', borderColor: '#22c55e', color: '#15803d' }}>
-      <div>{data.label}</div>
-      {data.sub && <div style={{ fontSize: 10, fontWeight: 400, color: '#4ade80', marginTop: 2 }}>{data.sub}</div>}
-    </div>
-  )
-}
-
-function OutputNode({ data }: { data: { label: string; sub?: string } }) {
-  return (
-    <div style={{ ...nodeBase, background: '#ecfdf5', borderColor: '#10b981', color: '#065f46', minWidth: 180 }}>
-      <div style={{ fontSize: 14 }}>✅ {data.label}</div>
-      {data.sub && <div style={{ fontSize: 10, fontWeight: 400, color: '#34d399', marginTop: 2 }}>{data.sub}</div>}
-    </div>
-  )
-}
-
-function GroupNode({ data }: { data: { label: string } }) {
-  return (
-    <div style={{
-      padding: '6px 14px',
-      borderRadius: 10,
-      background: 'rgba(139,92,246,0.07)',
-      border: '1.5px dashed #8b5cf6',
-      color: '#7c3aed',
-      fontSize: 11,
-      fontWeight: 700,
-      textAlign: 'center',
-    }}>
-      {data.label}
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: 16,
+        background: data.ghost ? `${tone}0d` : `${tone}0a`,
+        border: `1.5px dashed ${data.ghost ? `${tone}66` : tone}`,
+      }}
+    >
+      {data.label && (
+        <span
+          style={{
+            position: 'relative',
+            top: -10,
+            left: 14,
+            display: 'inline-block',
+            background: '#fff',
+            padding: '0 8px',
+            fontSize: 11,
+            fontWeight: 700,
+            color: tone,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {data.label}
+        </span>
+      )}
     </div>
   )
 }
 
 const nodeTypes = {
   input: InputNode,
-  bert: BertNode,
-  lstm: LstmNode,
-  fusion: FusionNode,
+  embed: EmbedNode,
+  encoder: EncoderNode,
+  attn: AttnNode,
+  head: HeadNode,
   output: OutputNode,
   group: GroupNode,
 }
 
-// ── Layout constants ────────────────────────────────────────────────────────
-
-const CX = 420   // BERT column center x
-const RX = 760   // LSTM column center x
-const MX = 590   // Merge column center x
-
 // ── Nodes ───────────────────────────────────────────────────────────────────
 
+const groupDefaults = {
+  draggable: false,
+  selectable: false,
+  connectable: false,
+  zIndex: 0,
+}
+
 const initialNodes: Node[] = [
+  // ── Group containers (declared first → painted behind content) ──
+  {
+    id: 'enc-ghost-2',
+    type: 'group',
+    position: { x: 318, y: 423 },
+    data: { ghost: true, tone: '#6366f1' },
+    style: { width: 290, height: 395 },
+    ...groupDefaults,
+  },
+  {
+    id: 'enc-ghost-1',
+    type: 'group',
+    position: { x: 304, y: 409 },
+    data: { ghost: true, tone: '#6366f1' },
+    style: { width: 290, height: 395 },
+    ...groupDefaults,
+  },
+  {
+    id: 'emb-group',
+    type: 'group',
+    position: { x: 205, y: 186 },
+    data: { label: 'Эмбеддинги', tone: '#06b6d4' },
+    style: { width: 446, height: 212 },
+    ...groupDefaults,
+  },
+  {
+    id: 'enc-group',
+    type: 'group',
+    position: { x: 290, y: 395 },
+    data: { label: 'Encoder Layer  × 6', tone: '#6366f1' },
+    style: { width: 290, height: 395 },
+    ...groupDefaults,
+  },
+  {
+    id: 'attn-group',
+    type: 'group',
+    position: { x: 612, y: 352 },
+    data: { label: 'Раскрытие Self-Attention', tone: '#8b5cf6' },
+    style: { width: 268, height: 320 },
+    ...groupDefaults,
+  },
+  {
+    id: 'head-group',
+    type: 'group',
+    position: { x: 286, y: 884 },
+    data: { label: 'Token Classification Head', tone: '#22c55e' },
+    style: { width: 304, height: 360 },
+    ...groupDefaults,
+  },
+
   // ── Input ──
   {
     id: 'input',
     type: 'input',
-    position: { x: MX - 80, y: 0 },
-    data: { label: '📥 Входной текст', sub: 'Русский / Казахский' },
-    sourcePosition: Position.Bottom,
+    position: { x: 346, y: 0 },
+    data: { label: '📥 Входной текст', sub: 'одно казахское предложение за проход' },
+    zIndex: 5,
   },
-
-  // ── Tokenizer ──
   {
     id: 'tokenizer',
-    type: 'bert',
-    position: { x: MX - 80, y: 100 },
-    data: { label: '🔤 WordPiece Tokenizer', sub: 'BERT-совместимый' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    type: 'embed',
+    position: { x: 316, y: 96 },
+    data: { label: '🔤 Byte-level BPE токенизатор', sub: 'токены + <s> … </s> · словарь ≈ 52k' },
+    zIndex: 5,
   },
 
-  // ── BERT path ──────────────────────────────────────────────────────────
+  // ── Embeddings ──
   {
-    id: 'bert-embed',
-    type: 'bert',
-    position: { x: CX - 80, y: 230 },
-    data: { label: '🧩 Эмбеддинги', sub: 'Token + Position + Segment' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    id: 'token-emb',
+    type: 'embed',
+    position: { x: 232, y: 214 },
+    data: { label: '🧩 Token Embeddings', sub: 'id → вектор · d = 768' },
+    zIndex: 5,
+  },
+  {
+    id: 'pos-emb',
+    type: 'embed',
+    position: { x: 442, y: 214 },
+    data: { label: '📍 Position Embeddings', sub: 'обучаемые · позиции 0…514' },
+    zIndex: 5,
+  },
+  {
+    id: 'emb-sum',
+    type: 'embed',
+    position: { x: 300, y: 312 },
+    data: { label: '⊕ Сумма + LayerNorm + Dropout', sub: 'без segment-эмбеддингов / NSP' },
+    zIndex: 5,
   },
 
-  // BERT encoder group label
+  // ── Encoder layer (internals unrolled, repeated × 6) ──
   {
-    id: 'bert-group',
-    type: 'group',
-    position: { x: CX - 110, y: 340 },
-    data: { label: 'BERT Encoder × 12 блоков' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    style: { width: 220, height: 220 },
+    id: 'mha',
+    type: 'encoder',
+    position: { x: 322, y: 420 },
+    data: { label: '🎯 Multi-Head Self-Attention', sub: '12 голов · d_k = 64' },
+    zIndex: 5,
+  },
+  {
+    id: 'addnorm1',
+    type: 'encoder',
+    position: { x: 332, y: 516 },
+    data: { label: '➕ Add & LayerNorm', sub: 'остаточная связь' },
+    zIndex: 5,
+  },
+  {
+    id: 'ffn',
+    type: 'encoder',
+    position: { x: 322, y: 606 },
+    data: { label: '⚡ Feed-Forward Network', sub: '768 → 3072 (GELU) → 768' },
+    zIndex: 5,
+  },
+  {
+    id: 'addnorm2',
+    type: 'encoder',
+    position: { x: 332, y: 700 },
+    data: { label: '➕ Add & LayerNorm', sub: 'остаточная связь' },
+    zIndex: 5,
   },
 
+  // ── Self-attention internals (callout) ──
   {
-    id: 'bert-attn',
-    type: 'bert',
-    position: { x: CX - 75, y: 370 },
-    data: { label: '🎯 Multi-Head Self-Attention', sub: '12 голов, dim=768' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    parentId: 'bert-group',
-    extent: 'parent',
+    id: 'qkv',
+    type: 'attn',
+    position: { x: 636, y: 382 },
+    data: { label: 'Q · K · V проекции', sub: 'Linear 768 → 768  (× 3)' },
+    zIndex: 5,
   },
   {
-    id: 'bert-norm1',
-    type: 'bert',
-    position: { x: CX - 75, y: 460 },
-    data: { label: 'Add & LayerNorm' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    parentId: 'bert-group',
-    extent: 'parent',
+    id: 'sdpa',
+    type: 'attn',
+    position: { x: 636, y: 476 },
+    data: { label: 'Scaled Dot-Product', sub: 'softmax(QKᵀ / √d_k) · V' },
+    zIndex: 5,
   },
   {
-    id: 'bert-ffn',
-    type: 'bert',
-    position: { x: CX - 75, y: 550 },
-    data: { label: '⚡ Feed-Forward Network', sub: 'dim 768 → 3072 → 768' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    parentId: 'bert-group',
-    extent: 'parent',
-  },
-  {
-    id: 'bert-norm2',
-    type: 'bert',
-    position: { x: CX - 75, y: 640 },
-    data: { label: 'Add & LayerNorm' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    parentId: 'bert-group',
-    extent: 'parent',
+    id: 'concat-heads',
+    type: 'attn',
+    position: { x: 636, y: 570 },
+    data: { label: 'Concat голов → Linear', sub: '12 × 64 → 768' },
+    zIndex: 5,
   },
 
+  // ── Encoder output ──
   {
-    id: 'bert-cls',
-    type: 'bert',
-    position: { x: CX - 80, y: 590 },
-    data: { label: '🏷 [CLS] Представление', sub: 'dim = 768' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    id: 'seq-out',
+    type: 'encoder',
+    position: { x: 318, y: 812 },
+    data: { label: '📦 Контекстные эмбеддинги', sub: '[ seq_len × 768 ]' },
+    zIndex: 5,
   },
 
-  // ── LSTM path ──────────────────────────────────────────────────────────
+  // ── Token classification head ──
   {
-    id: 'bilstm',
-    type: 'lstm',
-    position: { x: RX - 80, y: 230 },
-    data: { label: '🔁 BiLSTM Layer', sub: 'hidden=256, 2 слоя' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    id: 'cls-dropout',
+    type: 'head',
+    position: { x: 322, y: 906 },
+    data: { label: 'Dropout', sub: 'p = 0.1' },
+    zIndex: 5,
   },
   {
-    id: 'lstm-fwd',
-    type: 'lstm',
-    position: { x: RX - 140, y: 360 },
-    data: { label: '→ Forward LSTM', sub: 'h=256' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    id: 'cls-linear',
+    type: 'head',
+    position: { x: 322, y: 994 },
+    data: { label: 'Linear 768 → 2', sub: 'для каждого токена' },
+    zIndex: 5,
   },
   {
-    id: 'lstm-bwd',
-    type: 'lstm',
-    position: { x: RX + 20, y: 360 },
-    data: { label: '← Backward LSTM', sub: 'h=256' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    id: 'cls-softmax',
+    type: 'head',
+    position: { x: 322, y: 1082 },
+    data: { label: '📊 Softmax', sub: 'P(KEEP), P(ERROR)' },
+    zIndex: 5,
   },
   {
-    id: 'lstm-attn',
-    type: 'lstm',
-    position: { x: RX - 80, y: 490 },
-    data: { label: '🔦 Attention Pooling', sub: 'Bahdanau-style' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    id: 'cls-word',
+    type: 'head',
+    position: { x: 322, y: 1170 },
+    data: { label: 'Метка слова', sub: 'по первому подтокену · argmax' },
+    zIndex: 5,
   },
 
-  // ── Fusion ─────────────────────────────────────────────────────────────
-  {
-    id: 'concat',
-    type: 'fusion',
-    position: { x: MX - 80, y: 710 },
-    data: { label: '🔗 Конкатенация', sub: 'BERT [CLS] + BiLSTM → dim 1280' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-  },
-  {
-    id: 'dropout',
-    type: 'fusion',
-    position: { x: MX - 80, y: 830 },
-    data: { label: '🎲 Dropout', sub: 'p = 0.3' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-  },
-  {
-    id: 'dense',
-    type: 'fusion',
-    position: { x: MX - 80, y: 940 },
-    data: { label: '🧠 Dense Linear Layer', sub: '1280 → vocab_size' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-  },
-  {
-    id: 'softmax',
-    type: 'fusion',
-    position: { x: MX - 80, y: 1050 },
-    data: { label: '📊 Softmax', sub: 'Вероятности по словарю' },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-  },
+  // ── Output ──
   {
     id: 'output',
     type: 'output',
-    position: { x: MX - 90, y: 1160 },
-    data: { label: 'Исправленный токен', sub: 'argmax → декодирование' },
-    targetPosition: Position.Top,
+    position: { x: 322, y: 1276 },
+    data: { label: '🏷️ KEEP / ERROR', sub: 'ERROR → слово исправляет корректор' },
+    zIndex: 5,
   },
 ]
 
 // ── Edges ───────────────────────────────────────────────────────────────────
 
-const edgeStyle = { stroke: '#94a3b8', strokeWidth: 2 }
-const bertEdge = { stroke: '#8b5cf6', strokeWidth: 2 }
-const lstmEdge = { stroke: '#f97316', strokeWidth: 2 }
-const fusionEdge = { stroke: '#22c55e', strokeWidth: 2 }
+const E = {
+  gray: { stroke: '#94a3b8', strokeWidth: 2 },
+  sky: { stroke: '#06b6d4', strokeWidth: 2 },
+  indigo: { stroke: '#6366f1', strokeWidth: 2 },
+  violet: { stroke: '#8b5cf6', strokeWidth: 2 },
+  violetDashed: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 4' },
+  green: { stroke: '#22c55e', strokeWidth: 2 },
+}
+
+const labelStyle = { fontSize: 10, fontWeight: 700, fill: '#475569' }
+const labelBgStyle = { fill: '#ffffff', fillOpacity: 0.92 }
 
 const initialEdges: Edge[] = [
-  // Input → Tokenizer
-  { id: 'e-in-tok', source: 'input', target: 'tokenizer', style: edgeStyle, animated: true },
+  { id: 'e1', source: 'input', target: 'tokenizer', style: E.gray, animated: true },
 
-  // Tokenizer → BERT path
-  { id: 'e-tok-embed', source: 'tokenizer', target: 'bert-embed', style: bertEdge, animated: true, label: 'BERT path', labelStyle: { fontSize: 10, fill: '#8b5cf6', fontWeight: 600 } },
+  { id: 'e2', source: 'tokenizer', target: 'token-emb', style: E.sky },
+  { id: 'e3', source: 'tokenizer', target: 'pos-emb', style: E.sky },
+  { id: 'e4', source: 'token-emb', target: 'emb-sum', style: E.sky },
+  { id: 'e5', source: 'pos-emb', target: 'emb-sum', style: E.sky },
 
-  // Tokenizer → LSTM path
-  { id: 'e-tok-bilstm', source: 'tokenizer', target: 'bilstm', style: lstmEdge, animated: true, label: 'LSTM path', labelStyle: { fontSize: 10, fill: '#f97316', fontWeight: 600 } },
+  { id: 'e6', source: 'emb-sum', target: 'mha', style: E.indigo, animated: true },
+  { id: 'e7', source: 'mha', target: 'addnorm1', style: E.indigo },
+  { id: 'e8', source: 'addnorm1', target: 'ffn', style: E.indigo },
+  { id: 'e9', source: 'ffn', target: 'addnorm2', style: E.indigo },
+  {
+    id: 'e10',
+    source: 'addnorm2',
+    target: 'seq-out',
+    style: E.indigo,
+    animated: true,
+    label: '× 6 слоёв',
+    labelStyle,
+    labelBgStyle,
+  },
 
-  // BERT internals
-  { id: 'e-embed-attn', source: 'bert-embed', target: 'bert-attn', style: bertEdge },
-  { id: 'e-attn-norm1', source: 'bert-attn', target: 'bert-norm1', style: bertEdge },
-  { id: 'e-norm1-ffn', source: 'bert-norm1', target: 'bert-ffn', style: bertEdge },
-  { id: 'e-ffn-norm2', source: 'bert-ffn', target: 'bert-norm2', style: bertEdge },
-  { id: 'e-norm2-cls', source: 'bert-norm2', target: 'bert-cls', style: bertEdge },
+  // Self-attention callout
+  {
+    id: 'e11',
+    source: 'mha',
+    sourceHandle: 'r',
+    target: 'qkv',
+    targetHandle: 'l',
+    style: E.violetDashed,
+    label: 'детализация',
+    labelStyle,
+    labelBgStyle,
+  },
+  { id: 'e12', source: 'qkv', target: 'sdpa', style: E.violet },
+  { id: 'e13', source: 'sdpa', target: 'concat-heads', style: E.violet },
 
-  // BiLSTM internals
-  { id: 'e-bilstm-fwd', source: 'bilstm', target: 'lstm-fwd', style: lstmEdge },
-  { id: 'e-bilstm-bwd', source: 'bilstm', target: 'lstm-bwd', style: lstmEdge },
-  { id: 'e-fwd-attn', source: 'lstm-fwd', target: 'lstm-attn', style: lstmEdge },
-  { id: 'e-bwd-attn', source: 'lstm-bwd', target: 'lstm-attn', style: lstmEdge },
-
-  // Fusion
-  { id: 'e-cls-concat', source: 'bert-cls', target: 'concat', style: fusionEdge, animated: true },
-  { id: 'e-attn-concat', source: 'lstm-attn', target: 'concat', style: fusionEdge, animated: true },
-
-  // Output path
-  { id: 'e-concat-drop', source: 'concat', target: 'dropout', style: fusionEdge },
-  { id: 'e-drop-dense', source: 'dropout', target: 'dense', style: fusionEdge },
-  { id: 'e-dense-soft', source: 'dense', target: 'softmax', style: fusionEdge },
-  { id: 'e-soft-out', source: 'softmax', target: 'output', style: fusionEdge, animated: true },
+  // Token classification head
+  { id: 'e14', source: 'seq-out', target: 'cls-dropout', style: E.green, animated: true },
+  { id: 'e15', source: 'cls-dropout', target: 'cls-linear', style: E.green },
+  { id: 'e16', source: 'cls-linear', target: 'cls-softmax', style: E.green },
+  { id: 'e17', source: 'cls-softmax', target: 'cls-word', style: E.green },
+  { id: 'e18', source: 'cls-word', target: 'output', style: E.green, animated: true },
 ]
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -328,7 +388,16 @@ export default function NeuralNetDiagram() {
   )
 
   return (
-    <div style={{ width: '100%', height: 680, borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+    <div
+      style={{
+        width: '100%',
+        height: 800,
+        borderRadius: 16,
+        overflow: 'hidden',
+        border: '1px solid #e2e8f0',
+        background: '#fafafa',
+      }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -337,22 +406,35 @@ export default function NeuralNetDiagram() {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.15 }}
-        minZoom={0.3}
-        maxZoom={1.5}
+        fitViewOptions={{ padding: 0.12 }}
+        minZoom={0.2}
+        maxZoom={1.6}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e2e8f0" />
         <Controls showInteractive={false} />
         <MiniMap
           nodeColor={(n) => {
-            if (n.type === 'bert') return '#8b5cf6'
-            if (n.type === 'lstm') return '#f97316'
-            if (n.type === 'fusion') return '#22c55e'
-            if (n.type === 'output') return '#10b981'
-            return '#3b82f6'
+            switch (n.type) {
+              case 'embed':
+                return '#06b6d4'
+              case 'encoder':
+                return '#6366f1'
+              case 'attn':
+                return '#8b5cf6'
+              case 'head':
+                return '#22c55e'
+              case 'output':
+                return '#10b981'
+              case 'group':
+                return 'transparent'
+              default:
+                return '#3b82f6'
+            }
           }}
           style={{ borderRadius: 8 }}
+          pannable
+          zoomable
         />
       </ReactFlow>
     </div>

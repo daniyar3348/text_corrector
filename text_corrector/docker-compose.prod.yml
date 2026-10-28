@@ -1,0 +1,66 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# PRODUCTION stack (VPS, always-on, HTTPS):
+#   caddy (public :80/:443, auto-HTTPS) → frontend (SPA + /api proxy) → backend (model)
+# Только Caddy слушает наружу; backend/frontend общаются по внутренней сети.
+#
+# Запуск на сервере (из каталога text_corrector/):
+#   echo "DOMAIN=corrector.example.kz" > .env.prod      # ваш домен (A-запись → IP VPS)
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# Требуется: модель в backend/models/kazakh_detector/ и backend/data/kk_lexicon.tsv
+# (см. docs/DEPLOY_VPS.md — как перенести их на сервер).
+# ──────────────────────────────────────────────────────────────────────────────
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.serve
+    restart: unless-stopped
+    environment:
+      - KAZAKH_MODEL_PATH=/app/models/kazakh_detector
+    healthcheck:
+      # Healthy только если загружена РЕАЛЬНАЯ модель (не placeholder).
+      test: ["CMD", "python", "-c",
+             "import urllib.request,json,sys; d=json.load(urllib.request.urlopen('http://localhost:8000/health',timeout=5)); x=d['details']; sys.exit(0 if x.get('kazakh_model_ready')=='True' and 'TransformerModel' in x.get('kazakh_model','') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks: [turan_net]
+    # портов наружу нет — доступ только через frontend/caddy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=/api
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [turan_net]
+    # портов наружу нет — Caddy проксирует на него
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # сертификаты Let's Encrypt (персистентно!)
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    networks: [turan_net]
+
+networks:
+  turan_net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

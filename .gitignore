@@ -32,3 +32,12 @@ text_corrector/models/*/
 # Logs
 *.log
 logs/
+
+# Large corpora / generated datasets
+/merged_dissertation.json
+text_corrector/backend/data/
+*.jsonl
+
+# Model weights and archives (too large for GitHub, >100 MB)
+*.safetensors
+kazakh_detector.zip
